@@ -1,6 +1,6 @@
 # Binaries & Executables
 *.exe
-codedocs
+/codedocs
 dist/
 
 # Output & Cache Files
