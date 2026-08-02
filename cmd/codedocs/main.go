@@ -8,17 +8,13 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
 	"codedocs/internal/api"
 	"codedocs/internal/config"
 	"codedocs/web"
-
-	"github.com/jchv/go-webview2"
 )
 
 func main() {
@@ -87,7 +83,7 @@ func main() {
 		}
 	}()
 
-	// Open 100% Native Embedded Windows Desktop GUI Window
+	// Open 100% Native Embedded Desktop GUI Window
 	if cfg.OpenBrowser {
 		openNativeWindow(serverURL, fmt.Sprintf("CodeDocs Generator %s", cfg.Version))
 		cancelApp()
@@ -109,31 +105,4 @@ func findAvailableListener(host string, startPort int, maxTries int) (net.Listen
 		}
 	}
 	return nil, fmt.Errorf("no free ports found between %d and %d", startPort, startPort+maxTries-1)
-}
-
-func openNativeWindow(url string, title string) {
-	if runtime.GOOS == "windows" {
-		w := webview2.New(false)
-		if w != nil {
-			defer w.Destroy()
-			w.SetTitle(title)
-			w.SetSize(1280, 850, webview2.HintNone)
-			w.Navigate(url)
-			w.Run() // Creates TRUE Native Win32 Window directly in Go process space!
-			return
-		}
-	}
-
-	// Fallback for non-Windows OS
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", "-a", "Google Chrome", "--args", "--app="+url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-
-	if cmd != nil {
-		_ = cmd.Start()
-	}
 }
