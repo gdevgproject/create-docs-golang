@@ -47,10 +47,13 @@ document.addEventListener('DOMContentLoaded', () => {
   let cachedFullText = null;
   let contentLoaded = false;
   let isFullRendered = false;
+  let cachedUpdateInfo = null;
+  let progressPollTimer = null;
 
   // Initialize
   loadVersion();
   loadBookmarks();
+  silentCheckUpdate();
 
   // Event Listeners
   dom.btnAddBm.addEventListener('click', addBookmark);
@@ -62,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnCopyModal.addEventListener('click', copyModalContent);
   dom.btnCloseModal.addEventListener('click', closeModal);
   dom.btnRenderAll.addEventListener('click', renderRemainingTextAsync);
-  if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', checkUpdate);
+  if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', openUpdateModal);
 
   window.addEventListener('click', (e) => {
     if (e.target === dom.modal) closeModal();
@@ -105,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/"/g, '&quot;');
   }
 
-  // ── VERSION & UPDATES ──
+  // ── HIGH-UX VERSION & UPDATES ──
   async function loadVersion() {
     try {
       const res = await fetch('api/version');
@@ -119,79 +122,145 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function checkUpdate() {
-    if (dom.btnCheckUpdate) {
-      dom.btnCheckUpdate.disabled = true;
-      dom.btnCheckUpdate.textContent = '⏳ Checking...';
-    }
-
+  // Silent background check on app startup (Zero UI clutter if no update!)
+  async function silentCheckUpdate() {
     try {
       const res = await fetch('api/check-update');
       const info = await res.json();
 
       if (info.has_update) {
-        dom.modalTitle.textContent = `🎉 Update Available: ${info.latest_version}`;
-        dom.btnCopyModal.style.display = 'none';
-
-        const notes = escHtml(info.release_notes || 'A new version of CodeDocs is available on GitHub.');
-        dom.modalContent.innerHTML = `
-          <div class="ex-section">
-            <div class="ex-title">Version Status</div>
-            <p>Current: <strong>${info.current_version}</strong> ➔ Latest: <strong style="color:var(--accent-emerald)">${info.latest_version}</strong></p>
-          </div>
-          <div class="ex-section">
-            <div class="ex-title">Release Notes</div>
-            <div style="background:var(--surface-card); padding:12px; border-radius:4px; border:1px solid var(--border);">${notes}</div>
-          </div>
-          <div style="margin-top:16px;">
-            <button class="action-btn primary" id="btn-apply-update">🚀 Download & Apply Update Now</button>
-          </div>
-        `;
-
-        dom.modal.style.display = 'flex';
-
-        const applyBtn = document.getElementById('btn-apply-update');
-        if (applyBtn) {
-          applyBtn.addEventListener('click', () => applyUpdate(info.download_url));
+        cachedUpdateInfo = info;
+        if (dom.btnCheckUpdate) {
+          dom.btnCheckUpdate.textContent = `✨ Update v${info.latest_version}`;
+          dom.btnCheckUpdate.style.display = 'inline-block';
         }
       } else {
-        showToast(`✅ You are on the latest version (${info.current_version})`);
+        if (dom.btnCheckUpdate) dom.btnCheckUpdate.style.display = 'none';
       }
     } catch {
-      showToast('❌ Error checking GitHub for updates');
-    } finally {
-      if (dom.btnCheckUpdate) {
-        dom.btnCheckUpdate.disabled = false;
-        dom.btnCheckUpdate.textContent = '🔄 Update';
-      }
+      // ignore network errors
     }
   }
 
-  async function applyUpdate(downloadUrl) {
-    const applyBtn = document.getElementById('btn-apply-update');
-    if (applyBtn) {
-      applyBtn.disabled = true;
-      applyBtn.textContent = '⏳ Downloading & Installing Update...';
+  function openUpdateModal() {
+    if (!cachedUpdateInfo) return;
+    const info = cachedUpdateInfo;
+
+    dom.modalTitle.textContent = `✨ Update Available: ${info.latest_version}`;
+    dom.btnCopyModal.style.display = 'none';
+
+    const notes = escHtml(info.release_notes || 'A new version of CodeDocs is available on GitHub.');
+    dom.modalContent.innerHTML = `
+      <div class="ex-section">
+        <div class="ex-title">Version Comparison</div>
+        <p>Current: <strong>${info.current_version}</strong> ➔ Latest: <strong style="color:var(--accent-emerald)">${info.latest_version}</strong></p>
+      </div>
+      <div class="ex-section">
+        <div class="ex-title">Release Notes</div>
+        <div style="background:var(--surface-card); padding:12px; border-radius:4px; border:1px solid var(--border); white-space:pre-wrap;">${notes}</div>
+      </div>
+      <div id="update-action-box" style="margin-top:16px;">
+        <button class="action-btn primary" id="btn-start-download">⬇ Download Update (Background)</button>
+      </div>
+      <div id="update-progress-box" class="update-progress-container" style="display:none;">
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+          <span id="upd-status-text">Downloading update...</span>
+          <span id="upd-pct-text" style="font-weight:700; color:var(--primary);">0%</span>
+        </div>
+        <div class="update-progress-bar">
+          <div class="update-progress-fill" id="upd-progress-fill"></div>
+        </div>
+      </div>
+    `;
+
+    dom.modal.style.display = 'flex';
+
+    const startDownloadBtn = document.getElementById('btn-start-download');
+    if (startDownloadBtn) {
+      startDownloadBtn.addEventListener('click', () => startBackgroundDownload(info.download_url));
     }
+  }
+
+  async function startBackgroundDownload(downloadUrl) {
+    const actionBox = document.getElementById('update-action-box');
+    const progressBox = document.getElementById('update-progress-box');
+    if (actionBox) actionBox.style.display = 'none';
+    if (progressBox) progressBox.style.display = 'block';
 
     try {
-      const res = await fetch('api/apply-update', {
+      await fetch('api/download-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ download_url: downloadUrl }),
       });
 
-      if (res.ok) {
-        showToast('🚀 Update applied! Restarting application...');
-        setTimeout(() => {
-          location.reload();
-        }, 3000);
-      } else {
-        showToast('❌ Failed to apply update');
+      // Poll progress every 500ms
+      if (progressPollTimer) clearInterval(progressPollTimer);
+      progressPollTimer = setInterval(pollUpdateProgress, 500);
+      showToast('⬇ Downloading update in background... You can keep using the app!');
+    } catch {
+      showToast('❌ Failed to start update download');
+    }
+  }
+
+  async function pollUpdateProgress() {
+    try {
+      const res = await fetch('api/update-progress');
+      const p = await res.json();
+
+      const fill = document.getElementById('upd-progress-fill');
+      const pctText = document.getElementById('upd-pct-text');
+      const statusText = document.getElementById('upd-status-text');
+
+      if (fill) fill.style.width = p.percent + '%';
+      if (pctText) pctText.textContent = p.percent + '%';
+
+      if (p.state === 'downloading') {
+        if (statusText) {
+          statusText.textContent = `Downloading: ${formatBytes(p.downloaded_bytes)} / ${formatBytes(p.total_bytes)}`;
+        }
+      } else if (p.state === 'ready') {
+        if (progressPollTimer) clearInterval(progressPollTimer);
+        if (statusText) statusText.textContent = '✅ Update downloaded & verified!';
+        if (pctText) pctText.textContent = '100%';
+
+        const actionBox = document.getElementById('update-action-box');
+        if (actionBox) {
+          actionBox.innerHTML = `<button class="action-btn primary" id="btn-apply-update" style="background:var(--accent-emerald);">🚀 Restart App to Apply Update</button>`;
+          actionBox.style.display = 'block';
+
+          const applyBtn = document.getElementById('btn-apply-update');
+          if (applyBtn) {
+            applyBtn.addEventListener('click', applyUpdate);
+          }
+        }
+        showToast('✅ Update is ready! Click Restart to apply.');
+      } else if (p.state === 'error') {
+        if (progressPollTimer) clearInterval(progressPollTimer);
+        if (statusText) statusText.textContent = '❌ Download error: ' + (p.error || 'Unknown error');
+        showToast('❌ Error downloading update');
       }
     } catch {
-      showToast('🚀 Update triggered. Reloading page...');
-      setTimeout(() => location.reload(), 3000);
+      // ignore
+    }
+  }
+
+  async function applyUpdate() {
+    const applyBtn = document.getElementById('btn-apply-update');
+    if (applyBtn) {
+      applyBtn.disabled = true;
+      applyBtn.textContent = '⏳ Restarting application...';
+    }
+
+    try {
+      await fetch('api/apply-update', { method: 'POST' });
+      showToast('🚀 Restarting application to apply update...');
+      setTimeout(() => {
+        location.reload();
+      }, 1500);
+    } catch {
+      showToast('🚀 Restarting...');
+      setTimeout(() => location.reload(), 1500);
     }
   }
 

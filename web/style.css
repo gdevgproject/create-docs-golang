@@ -701,3 +701,51 @@ textarea.code-editor {
   font-size: 0.72rem;
   color: var(--text-dim);
 }
+
+.btn-update-badge {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+  animation: updatePulse 2s infinite;
+  transition: all 0.2s;
+}
+
+.btn-update-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.6);
+}
+
+@keyframes updatePulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+  70% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.update-progress-container {
+  margin-top: 14px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  padding: 14px;
+  border-radius: var(--radius);
+}
+
+.update-progress-bar {
+  height: 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 10px 0 6px 0;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--accent-emerald));
+  width: 0%;
+  transition: width 0.2s ease;
+}

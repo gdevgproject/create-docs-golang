@@ -14,10 +14,12 @@ import (
 
 	"codedocs/internal/api"
 	"codedocs/internal/config"
+	"codedocs/internal/updater"
 	"codedocs/web"
 )
 
 func main() {
+	updater.CleanupOldFiles()
 	cfg := config.ParseFlags()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))

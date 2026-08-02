@@ -264,7 +264,7 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, info)
 }
 
-func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDownloadUpdate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		DownloadURL string `json:"download_url"`
 	}
@@ -279,14 +279,30 @@ func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := updater.StartBackgroundDownload(body.DownloadURL); err != nil {
+		s.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.jsonResponse(w, map[string]string{
+		"status":  "success",
+		"message": "Background download started",
+	})
+}
+
+func (s *Server) handleGetUpdateProgress(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, updater.GetProgress())
+}
+
+func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, map[string]string{
 		"status":  "success",
 		"message": "Applying update and restarting application...",
 	})
 
 	go func() {
-		time.Sleep(500 * time.Millisecond)
-		_ = updater.ApplyUpdate(body.DownloadURL)
+		time.Sleep(300 * time.Millisecond)
+		_ = updater.ApplyPreparedUpdate()
 	}()
 }
 

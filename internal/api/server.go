@@ -62,6 +62,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET "+bp+"/api/generate", s.handleGenerate)
 	s.mux.HandleFunc("GET "+bp+"/api/version", s.handleGetVersion)
 	s.mux.HandleFunc("GET "+bp+"/api/check-update", s.handleCheckUpdate)
+	s.mux.HandleFunc("POST "+bp+"/api/download-update", s.handleDownloadUpdate)
+	s.mux.HandleFunc("GET "+bp+"/api/update-progress", s.handleGetUpdateProgress)
 	s.mux.HandleFunc("POST "+bp+"/api/apply-update", s.handleApplyUpdate)
 	s.mux.HandleFunc("POST "+bp+"/api/shutdown", s.handleShutdown)
 	s.mux.HandleFunc("GET "+bp+"/api/ping", s.handlePing)

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"codedocs/internal/config"
@@ -24,6 +25,14 @@ type UpdateInfo struct {
 	PublishedAt    string `json:"published_at"`
 }
 
+type DownloadProgress struct {
+	State          string `json:"state"` // "idle", "downloading", "ready", "error"
+	Percent        int    `json:"percent"`
+	DownloadedBytes int64  `json:"downloaded_bytes"`
+	TotalBytes     int64  `json:"total_bytes"`
+	Error          string `json:"error,omitempty"`
+}
+
 type githubReleaseAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
@@ -35,6 +44,35 @@ type githubReleaseResponse struct {
 	Body        string               `json:"body"`
 	PublishedAt string               `json:"published_at"`
 	Assets      []githubReleaseAsset `json:"assets"`
+}
+
+var (
+	progMu       sync.RWMutex
+	currentProg  DownloadProgress
+	preparedFile string
+)
+
+func GetProgress() DownloadProgress {
+	progMu.RLock()
+	defer progMu.RUnlock()
+	return currentProg
+}
+
+func setProgress(p DownloadProgress) {
+	progMu.Lock()
+	currentProg = p
+	progMu.Unlock()
+}
+
+// CleanupOldFiles silently removes leftover .old binary files on application launch
+func CleanupOldFiles() {
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	execPath, _ = filepath.EvalSymlinks(execPath)
+	oldPath := execPath + ".old"
+	_ = os.Remove(oldPath)
 }
 
 // CheckUpdate checks GitHub Releases API for the latest published release
@@ -128,12 +166,100 @@ func IsNewerVersion(current, latest string) bool {
 	return len(latParts) > len(curParts)
 }
 
-// ApplyUpdate downloads the new binary, replaces the current running binary, and restarts the app
-func ApplyUpdate(downloadURL string) error {
+// StartBackgroundDownload downloads the update binary in the background while updating progress
+func StartBackgroundDownload(downloadURL string) error {
 	if downloadURL == "" {
 		return fmt.Errorf("download URL is empty")
 	}
 
+	progMu.Lock()
+	if currentProg.State == "downloading" {
+		progMu.Unlock()
+		return nil // Already downloading
+	}
+	currentProg = DownloadProgress{State: "downloading", Percent: 0}
+	progMu.Unlock()
+
+	go func() {
+		execPath, err := os.Executable()
+		if err != nil {
+			setProgress(DownloadProgress{State: "error", Error: err.Error()})
+			return
+		}
+		execPath, _ = filepath.EvalSymlinks(execPath)
+		newPath := execPath + ".new"
+
+		resp, err := http.Get(downloadURL)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			setProgress(DownloadProgress{State: "error", Error: "Download failed"})
+			return
+		}
+		defer resp.Body.Close()
+
+		totalBytes := resp.ContentLength
+		outFile, err := os.Create(newPath)
+		if err != nil {
+			setProgress(DownloadProgress{State: "error", Error: err.Error()})
+			return
+		}
+
+		buf := make([]byte, 32768)
+		var downloadedBytes int64
+
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				if _, werr := outFile.Write(buf[:n]); werr != nil {
+					outFile.Close()
+					_ = os.Remove(newPath)
+					setProgress(DownloadProgress{State: "error", Error: "Write failed"})
+					return
+				}
+				downloadedBytes += int64(n)
+				pct := 0
+				if totalBytes > 0 {
+					pct = int((float64(downloadedBytes) / float64(totalBytes)) * 100)
+				}
+				setProgress(DownloadProgress{
+					State:           "downloading",
+					Percent:         pct,
+					DownloadedBytes: downloadedBytes,
+					TotalBytes:      totalBytes,
+				})
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				outFile.Close()
+				_ = os.Remove(newPath)
+				setProgress(DownloadProgress{State: "error", Error: err.Error()})
+				return
+			}
+		}
+
+		outFile.Close()
+		if runtime.GOOS != "windows" {
+			_ = os.Chmod(newPath, 0755)
+		}
+
+		progMu.Lock()
+		preparedFile = newPath
+		progMu.Unlock()
+
+		setProgress(DownloadProgress{
+			State:           "ready",
+			Percent:         100,
+			DownloadedBytes: downloadedBytes,
+			TotalBytes:      totalBytes,
+		})
+	}()
+
+	return nil
+}
+
+// ApplyPreparedUpdate swaps running binary with prepared new binary and restarts app
+func ApplyPreparedUpdate() error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to find executable path: %w", err)
@@ -144,42 +270,20 @@ func ApplyUpdate(downloadURL string) error {
 		return fmt.Errorf("failed to resolve symlink: %w", err)
 	}
 
-	// Download new binary to temporary file
-	resp, err := http.Get(downloadURL)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download update binary: %w", err)
-	}
-	defer resp.Body.Close()
-
-	tmpPath := execPath + ".tmp"
-	tmpFile, err := os.Create(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to create temp file for update: %w", err)
+	newPath := execPath + ".new"
+	if _, err := os.Stat(newPath); err != nil {
+		return fmt.Errorf("prepared update file not found")
 	}
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("failed to save update payload: %w", err)
-	}
-	tmpFile.Close()
-
-	// Make binary executable on Unix
-	if runtime.GOOS != "windows" {
-		_ = os.Chmod(tmpPath, 0755)
-	}
-
-	// On Windows, rename current running .exe to .exe.old, then rename .tmp to .exe
 	oldPath := execPath + ".old"
 	_ = os.Remove(oldPath)
 
 	if err := os.Rename(execPath, oldPath); err != nil {
-		_ = os.Remove(tmpPath)
+		_ = os.Remove(newPath)
 		return fmt.Errorf("failed to move current binary: %w", err)
 	}
 
-	if err := os.Rename(tmpPath, execPath); err != nil {
-		// Rollback if failed
+	if err := os.Rename(newPath, execPath); err != nil {
 		_ = os.Rename(oldPath, execPath)
 		return fmt.Errorf("failed to place new binary: %w", err)
 	}
@@ -194,7 +298,6 @@ func ApplyUpdate(downloadURL string) error {
 		return fmt.Errorf("failed to restart updated application: %w", err)
 	}
 
-	// Exit current process
 	os.Exit(0)
 	return nil
 }
