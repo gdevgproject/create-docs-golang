@@ -17,6 +17,8 @@ import (
 	"codedocs/internal/api"
 	"codedocs/internal/config"
 	"codedocs/web"
+
+	"github.com/jchv/go-webview2"
 )
 
 func main() {
@@ -70,25 +72,6 @@ func main() {
 		close(shutdownComplete)
 	}()
 
-	// Heartbeat monitor: After client connects, if no ping received for > 8s (meaning app window was closed), shut down!
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				if api.HasConnected() && time.Since(api.GetLastHeartbeat()) > 8*time.Second {
-					slog.Info("No web UI connected for > 8s. Auto closing server...")
-					cancelApp()
-					return
-				}
-			case <-appCtx.Done():
-				return
-			}
-		}
-	}()
-
 	serverURL := fmt.Sprintf("http://localhost:%d%s", cfg.Port, cfg.BasePath)
 
 	fmt.Println("================================================================")
@@ -97,19 +80,21 @@ func main() {
 	fmt.Printf("⚡ Worker Pool: %d goroutines | Max File Size: %dMB\n", cfg.Workers, cfg.MaxFileSize/(1024*1024))
 	fmt.Println("================================================================")
 
+	go func() {
+		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("Server error", "error", err)
+			cancelApp()
+		}
+	}()
+
+	// Open 100% Native Embedded Windows Desktop GUI Window
 	if cfg.OpenBrowser {
-		go func() {
-			time.Sleep(300 * time.Millisecond)
-			openAppWindow(serverURL)
-		}()
-	}
-
-	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("Server error", "error", err)
+		openNativeWindow(serverURL, fmt.Sprintf("CodeDocs Generator %s", cfg.Version))
 		cancelApp()
+	} else {
+		<-shutdownComplete
 	}
 
-	<-shutdownComplete
 	slog.Info("Application stopped cleanly. Zero background processes left.")
 	os.Exit(0)
 }
@@ -126,30 +111,22 @@ func findAvailableListener(host string, startPort int, maxTries int) (net.Listen
 	return nil, fmt.Errorf("no free ports found between %d and %d", startPort, startPort+maxTries-1)
 }
 
-func openAppWindow(url string) {
+func openNativeWindow(url string, title string) {
+	if runtime.GOOS == "windows" {
+		w := webview2.New(false)
+		if w != nil {
+			defer w.Destroy()
+			w.SetTitle(title)
+			w.SetSize(1280, 850, webview2.HintNone)
+			w.Navigate(url)
+			w.Run() // Creates TRUE Native Win32 Window directly in Go process space!
+			return
+		}
+	}
+
+	// Fallback for non-Windows OS
 	var cmd *exec.Cmd
-
 	switch runtime.GOOS {
-	case "windows":
-		edgePaths := []string{
-			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
-			`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
-			os.Getenv("LOCALAPPDATA") + `\Microsoft\Edge\Application\msedge.exe`,
-		}
-
-		var foundEdge string
-		for _, p := range edgePaths {
-			if _, err := os.Stat(p); err == nil {
-				foundEdge = p
-				break
-			}
-		}
-
-		if foundEdge != "" {
-			cmd = exec.Command(foundEdge, "--app="+url, "--window-size=1280,850")
-		} else {
-			cmd = exec.Command("cmd", "/c", "start", url)
-		}
 	case "darwin":
 		cmd = exec.Command("open", "-a", "Google Chrome", "--args", "--app="+url)
 	default:
