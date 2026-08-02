@@ -233,7 +233,19 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		defer close(events)
-		_, err := s.gen.Generate(ctx, projectPath, mode, events)
+		res, err := s.gen.Generate(ctx, projectPath, mode, events)
+		if err == nil && res != nil {
+			_, _ = s.bm.SaveLastResult(projectPath, bookmarks.LastResult{
+				FileName:    res.FileName,
+				TotalFiles:  res.TotalFiles,
+				TotalLines:  res.TotalLines,
+				TotalTokens: res.TotalTokens,
+				TokenMode:   res.TokenMode,
+				SizeBytes:   res.SizeBytes,
+				Elapsed:     res.Elapsed,
+				GeneratedAt: res.GeneratedAt,
+			})
+		}
 		if err != nil {
 			events <- generator.ProgressEvent{
 				Type:    "error",

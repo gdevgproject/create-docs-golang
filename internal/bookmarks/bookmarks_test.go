@@ -84,3 +84,41 @@ func TestBookmarks_UpdateNoteAndReorder(t *testing.T) {
 		t.Errorf("expected id2 order (%d) < id1 order (%d)", reordered[id2].Order, reordered[id1].Order)
 	}
 }
+
+func TestBookmarks_SaveLastResult(t *testing.T) {
+	tempFile := filepath.Join(t.TempDir(), "saved_paths.json")
+	mgr := NewManager(tempFile)
+
+	bms, _ := mgr.SaveBookmark("/projects/my-app", "My App")
+	var savedID string
+	for id := range bms {
+		savedID = id
+	}
+
+	lr := LastResult{
+		FileName:    "docs_my_app.md",
+		TotalFiles:  42,
+		TotalLines:  1200,
+		TotalTokens: 45000,
+		TokenMode:   "exact",
+		SizeBytes:   98000,
+		Elapsed:     1.2,
+		GeneratedAt: "2026-08-03 00:00:00",
+	}
+
+	// Test SaveLastResult matching path
+	updated, err := mgr.SaveLastResult("/projects/my-app", lr)
+	if err != nil {
+		t.Fatalf("SaveLastResult failed: %v", err)
+	}
+
+	if updated[savedID].LastResult == nil || updated[savedID].LastResult.TotalFiles != 42 {
+		t.Errorf("expected LastResult TotalFiles == 42, got %+v", updated[savedID].LastResult)
+	}
+
+	// Test SaveLastResult non-matching path (does not error, does not modify)
+	nonMatch, _ := mgr.SaveLastResult("/projects/other-app", lr)
+	if nonMatch[savedID].LastResult.TotalFiles != 42 {
+		t.Errorf("unmatched path affected bookmark result")
+	}
+}

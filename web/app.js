@@ -373,6 +373,41 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── BOOKMARKS ──
+  function selectBookmark(bm) {
+    dom.pathInput.value = bm.path;
+
+    if (bm.last_result) {
+      const lr = bm.last_result;
+      lastGeneratedFile = lr.file_name;
+      cachedFullText = null;
+      contentLoaded = false;
+      isFullRendered = false;
+
+      dom.fileBadge.className = 'status-badge badge-success';
+      dom.fileBadge.textContent = (lr.total || 0) + ' files (Last Scan)';
+
+      dom.statsCards.style.display = 'flex';
+      dom.statFiles.textContent = (lr.total || 0).toLocaleString();
+      dom.statLines.textContent = (lr.lines || 0).toLocaleString();
+      dom.statTokens.textContent = (lr.token_mode === 'exact' ? '' : '~') + (lr.tokens || 0).toLocaleString();
+      dom.statSize.textContent = formatBytes(lr.size || 0);
+      dom.statTime.textContent = (lr.elapsed || 0) + 's';
+      dom.statDate.textContent = lr.generated_at || '';
+
+      if (lr.file_name) {
+        dom.btnDownload.href = `api/download?file=${lr.file_name}`;
+        dom.btnDownload.removeAttribute('disabled');
+        dom.btnLoad.style.display = '';
+        dom.btnCopy.disabled = false;
+      }
+
+      dom.editor.value = `📌 Last Analyzed Result restored for "${bm.note || bm.path}".\n\nGenerated: ${lr.generated_at}\nFiles: ${lr.total}\nLines: ${(lr.lines || 0).toLocaleString()}\nTokens: ${(lr.tokens || 0).toLocaleString()}\nSize: ${formatBytes(lr.size || 0)}\n\nClick "📄 Load Content" (or "📋 Copy Docs") to load full document.`;
+      showToast(`📌 Restored last scan result for ${bm.note || bm.path}`);
+    } else {
+      showToast(`Loaded bookmark: ${bm.note || bm.path}`);
+    }
+  }
+
   async function loadBookmarks() {
     try {
       const res = await fetch('api/bookmarks');
@@ -405,8 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         div.addEventListener('click', (e) => {
           if (!e.target.closest('.bm-actions')) {
-            dom.pathInput.value = bm.path;
-            showToast(`Loaded bookmark: ${bm.note || bm.path}`);
+            selectBookmark(bm);
           }
         });
 

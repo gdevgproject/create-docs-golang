@@ -11,12 +11,24 @@ import (
 	"github.com/google/uuid"
 )
 
+type LastResult struct {
+	FileName    string  `json:"file_name"`
+	TotalFiles  int     `json:"total"`
+	TotalLines  int64   `json:"lines"`
+	TotalTokens int64   `json:"tokens"`
+	TokenMode   string  `json:"token_mode"`
+	SizeBytes   int64   `json:"size"`
+	Elapsed     float64 `json:"elapsed"`
+	GeneratedAt string  `json:"generated_at"`
+}
+
 type Bookmark struct {
-	ID        string `json:"id"`
-	Path      string `json:"path"`
-	Note      string `json:"note"`
-	Order     int    `json:"order"`
-	CreatedAt string `json:"created_at"`
+	ID         string      `json:"id"`
+	Path       string      `json:"path"`
+	Note       string      `json:"note"`
+	Order      int         `json:"order"`
+	CreatedAt  string      `json:"created_at"`
+	LastResult *LastResult `json:"last_result,omitempty"`
 }
 
 type Manager struct {
@@ -71,6 +83,32 @@ func (m *Manager) SaveBookmark(path, note string) (map[string]Bookmark, error) {
 
 	if err := m.saveUnlocked(bookmarks); err != nil {
 		return nil, err
+	}
+
+	return bookmarks, nil
+}
+
+// SaveLastResult attaches the latest generation result to a bookmark if path matches
+func (m *Manager) SaveLastResult(path string, res LastResult) (map[string]Bookmark, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cleanTarget := filepath.ToSlash(filepath.Clean(path))
+	bookmarks := m.loadUnlocked()
+
+	updated := false
+	for id, bm := range bookmarks {
+		if filepath.ToSlash(filepath.Clean(bm.Path)) == cleanTarget {
+			bm.LastResult = &res
+			bookmarks[id] = bm
+			updated = true
+		}
+	}
+
+	if updated {
+		if err := m.saveUnlocked(bookmarks); err != nil {
+			return nil, err
+		}
 	}
 
 	return bookmarks, nil

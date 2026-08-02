@@ -73,12 +73,14 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 6. Bookmark Management & Sequence Contract (`internal/bookmarks`)
+## 6. Bookmark Management & Last Result Persistence (`internal/bookmarks`)
 
 - **In-Place Rename & Reorder**:
   Bookmarks support `PUT /api/bookmarks` for both label renaming (`{"id": "...", "note": "..."}`) and reordering (`{"action": "reorder", "ordered_ids": [...]}`).
 - **Order Attribute Persistence**:
   Bookmarks MUST be sorted by `Order` attribute (`(a.order ?? 0) - (b.order ?? 0)`) so custom user reordering is strictly preserved upon application restart.
+- **Automatic Last Generation Stats Caching**:
+  When generation finishes, if project path matches a saved bookmark, `SaveLastResult` MUST automatically attach and persist `LastResult` (`total`, `lines`, `tokens`, `size`, `elapsed`, `generated_at`, `file_name`) into `saved_paths.json`. Clicking a bookmark restores stats cards and action buttons instantly.
 
 ---
 
