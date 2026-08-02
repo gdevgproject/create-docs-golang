@@ -42,6 +42,36 @@ func TestCleanAndValidateText(t *testing.T) {
 	}
 }
 
+func TestGenerator_TokenStatsExcludesTree(t *testing.T) {
+	tempProject := t.TempDir()
+	tempOutput := t.TempDir()
+
+	codeContent := "package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"hi\") }\n"
+	os.WriteFile(filepath.Join(tempProject, "app.go"), []byte(codeContent), 0644)
+
+	cfg := config.DefaultConfig()
+	cfg.TempDir = tempOutput
+
+	sc := scanner.NewScanner()
+	tok := tokenizer.NewTokenizer(t.TempDir())
+	gen := NewGenerator(cfg, sc, tok)
+
+	res, err := gen.Generate(context.Background(), tempProject, "full", nil)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	expectedLines := int64(strings.Count(codeContent, "\n")) + 1
+	if res.TotalLines != expectedLines {
+		t.Errorf("expected res.TotalLines == %d (excluding auto-generated directory tree), got %d", expectedLines, res.TotalLines)
+	}
+
+	expectedCodeTokens := tok.CountTokens(codeContent)
+	if res.TotalTokens != int64(expectedCodeTokens) {
+		t.Errorf("expected res.TotalTokens == %d (pure codebase tokens), got %d", expectedCodeTokens, res.TotalTokens)
+	}
+}
+
 func TestGenerator_Generate(t *testing.T) {
 	tempProject := t.TempDir()
 	tempOutput := t.TempDir()
