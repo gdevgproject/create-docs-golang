@@ -87,7 +87,7 @@ func main() {
 
 	// Open 100% Native Embedded Desktop GUI Window
 	if cfg.OpenBrowser {
-		openNativeWindow(serverURL, fmt.Sprintf("CodeDocs Generator %s", cfg.Version))
+		openNativeWindow(serverURL, fmt.Sprintf("CodePulse AI %s", cfg.Version))
 		cancelApp()
 	} else {
 		<-shutdownComplete
