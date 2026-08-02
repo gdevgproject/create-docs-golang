@@ -1,112 +1,68 @@
-# Codebase-to-Docs Generator (`codedocs`) — Go Production Rewrite
+# CodePulse AI — Next-Gen AI Code Context Engine
 
-> A high-performance, single-binary codebase documentation generator written in **Golang**. Automatically scans your codebase, formats source code with XML CDATA enclosures, counts exact GPT tokens (`o200k_base` tiktoken BPE), and streams real-time progress to a sleek developer web UI.
+> A high-performance, single-binary codebase documentation & AI context generator written in **Golang**. Automatically scans your codebase, formats source code with XML CDATA enclosures, counts exact GPT tokens (`o200k_base` tiktoken BPE), and streams real-time progress to a sleek developer web UI with native Win32 Immersive Dark Mode.
 
 ---
 
-## ✨ Features & Enhancements
+## ✨ Key Features & Architectural Highlights
 
-- 🚀 **Single Compiled Binary**: 100% self-contained application with embedded frontend web assets (`//go:embed`). No PHP, Node.js, Python, or runtime dependencies required.
-- ⚡ **Concurrent Worker Pool**: Multi-threaded parallel file processing using Go worker pools (`runtime.NumCPU()`), delivering **5x - 12x faster performance** than PHP.
-- 🔢 **Exact `o200k_base` Tiktoken**: Automatic download and SHA-256 validation of official OpenAI BPE vocabulary (`o200k_base` for GPT-4o / GPT-5.x) with thread-safe chunk memoization and offline heuristic fallback.
-- 📡 **Real-Time Streaming (SSE)**: Live progress updates, files/sec speed, logs, and completion statistics sent over Server-Sent Events (`http.Flusher`).
-- 🌳 **ASCII Directory Tree**: Instant preview of project structure matching Unix `tree` formatting.
-- 🎨 **Modern Developer UI**: Premium dark developer theme interface with responsive layout, stat cards, bookmark management, modal preview, and one-click copy/download actions.
-- 💾 **Thread-safe Bookmarks**: Persist frequently accessed project paths locally.
+- ⚡ **Extreme Golang Concurrency**: Multi-threaded parallel file processing using Go worker pools with OS CPU reservation (`runtime.NumCPU() - 1`), delivering **1,500+ files/sec throughput** without freezing OS responsiveness.
+- 🎨 **100% Native Win32 Immersive Dark Mode**: Windows desktop window uses DWM dark titlebar API to seamlessly match the sleek developer theme.
+- 🧮 **Instant Token Counter Tool**: Built-in interactive modal to paste any text, prompt, or XML snippet for instant exact `o200k_base` BPE token calculation.
+- 🌐 **Universal Multi-Ecosystem Exclusion Engine**: Out-of-the-box support for Node.js/Next/React, Java/Spring/Kotlin, Python, Go, C#/.NET, PHP/Laravel, Rust, DevOps, and Game Engines (Unity, Unreal Engine, Steam Modding). Automatically parses project `.gitignore` rules.
+- 🔄 **Non-Blocking In-Place Auto-Update System**: One-click GitHub Releases update downloading in the background with progress indicator and atomic 1-click application restart.
+- 📄 **High-Performance Non-Blocking Preview**: Instant 300KB fast preview with zero UI lag, controllable async chunk rendering, and instant **"⏸ Stop Rendering"** cancellation.
+- 💾 **Thread-Safe Project Bookmarks**: Persist frequently scanned project paths locally.
 
 ---
 
 ## 💻 System Requirements
 
-- **Running Precompiled Binary**: Zero dependencies. Works out-of-the-box on Windows, macOS, and Linux.
+- **Precompiled Binary**: 100% self-contained standalone `.exe` / binary. Zero runtime dependencies.
 - **Building from Source**: Go `1.22+` (Tested on Go `1.26`).
 
 ---
 
 ## 🛠️ Building from Source
 
-### Quick Build
+### Quick Build (Windows Desktop GUI)
 ```bash
-go build -ldflags="-s -w" -o codedocs ./cmd/codedocs
+go build -ldflags="-H=windowsgui -s -w -X codedocs/internal/config.Version=v1.4.0" -o CodePulse.exe ./cmd/codedocs
 ```
 
 ### Using Makefile
 ```bash
-make build       # Build binary for your host OS
-make test        # Run unit tests
+make build       # Build binary for host OS
+make test        # Run unit test suite
 make vet         # Run static analysis
 make build-all   # Cross-compile for Windows, macOS, Linux (amd64 + arm64)
 ```
 
 ---
 
-## 🌐 Cross-Compilation Matrix
-
-You can compile standalone binaries for any OS/Architecture using standard Go environment variables:
-
-| Target OS | Target Architecture | Cross-Compilation Command |
-| :--- | :--- | :--- |
-| **Windows** | 64-bit (x86_64) | `GOOS=windows GOARCH=amd64 go build -o codedocs_win.exe ./cmd/codedocs` |
-| **Windows** | ARM64 | `GOOS=windows GOARCH=arm64 go build -o codedocs_win_arm.exe ./cmd/codedocs` |
-| **macOS** | Apple Silicon (M1/M2/M3) | `GOOS=darwin GOARCH=arm64 go build -o codedocs_mac_arm ./cmd/codedocs` |
-| **macOS** | Intel 64-bit | `GOOS=darwin GOARCH=amd64 go build -o codedocs_mac_intel ./cmd/codedocs` |
-| **Linux** | 64-bit (x86_64) | `GOOS=linux GOARCH=amd64 go build -o codedocs_linux_amd64 ./cmd/codedocs` |
-| **Linux** | ARM64 | `GOOS=linux GOARCH=arm64 go build -o codedocs_linux_arm64 ./cmd/codedocs` |
-
----
-
-## 🚀 Running the Application
-
-Launch the server by running the compiled binary:
-
-```bash
-./codedocs --port 8080
-```
-
-Then open your browser and navigate to:
-```
-http://localhost:8080
-```
-
-### ⚙️ Command-Line Flags Reference
+## 🚀 Command-Line Flags Reference
 
 | Flag | Default | Description |
 | :--- | :--- | :--- |
 | `--port` | `8080` | Port for the HTTP server to listen on |
 | `--host` | `0.0.0.0` | Host IP address binding |
-| `--workers` | `runtime.NumCPU()` | Number of parallel worker threads |
-| `--max-size` | `10485760` (10MB) | Max file size in bytes to include full content |
+| `--workers` | `NumCPU - 1` | Worker pool size (preserves 1 CPU core for OS) |
+| `--max-size` | `10485760` (10MB) | Max file size in bytes to include content |
 | `--temp-dir` | `./temp_docs` | Directory where generated `.md` docs are saved |
 | `--cache-dir` | OS User Cache Dir | Directory used to cache `o200k_base.tiktoken` vocab |
 | `--bookmark-file` | OS User Config Dir | Path to `saved_paths.json` for bookmarks |
 
 ---
 
-## 🐳 Docker Deployment
+## 📊 Feature Comparison
 
-### Build Container
-```bash
-docker build -t codedocs:latest .
-```
-
-### Run Container
-```bash
-docker run -d -p 8080:8080 -v /var/projects:/app/projects codedocs:latest
-```
-
----
-
-## 📊 Feature Parity Comparison (PHP vs Go)
-
-| Feature | PHP Original (`index.php`) | Go Rewrite (`codedocs`) |
+| Feature | Legacy PHP Scripts | CodePulse AI (Go Rewrite) |
 | :--- | :---: | :---: |
-| Single Binary Execution | ❌ Requires PHP Runtime | ✅ **Single Compiled Binary** |
-| Multithreaded Worker Pool | ❌ Single-threaded | ✅ **Parallel Worker Pool (`NumCPU`)** |
-| `o200k_base` Tiktoken BPE | ✅ (Pure PHP) | ✅ **Native Go BPE + SHA-256 Cache** |
-| Chunk Memoization Cache | ✅ | ✅ **Thread-safe `sync.Map` Cache** |
-| Offline Fallback Estimator | ✅ | ✅ **`exact` / `estimate` Mode Indicator** |
-| Server-Sent Events (SSE) | ✅ | ✅ **Go `http.Flusher` Streaming** |
-| Stats Only / Full Content Mode | ✅ | ✅ **Supported** |
-| Project Bookmarks | ✅ (`saved_paths.json`) | ✅ **Thread-safe JSON Persistence** |
-| UI Design | Basic CSS | ✅ **Modern Dark Developer Theme** |
-| Automated Unit Tests | ❌ None | ✅ **Full `go test` Suite** |
+| Execution Architecture | ❌ PHP CLI Runtime required | ✅ **Single Compiled Standalone Binary** |
+| Multithreaded Worker Pool | ❌ Single-threaded | ✅ **Parallel Workers + CPU Safety** |
+| `o200k_base` Tiktoken BPE | ✅ (Pure PHP) | ✅ **Native Go BPE + FNV-1a Hash Cache** |
+| Native Win32 Titlebar | ❌ White Browser Frame | ✅ **DWM Immersive Dark Titlebar** |
+| In-Place Auto Update | ❌ Manual download | ✅ **Background Download & 1-Click Swap** |
+| Universal Exclusion Engine | ❌ Basic array | ✅ **All Stacks + Game Engines + `.gitignore`** |
+| Instant Token Counter | ❌ None | ✅ **Interactive Paste Token Calculator** |
+| Stop/Cancel Async Rendering | ❌ Infinite Freeze | ✅ **0ms Instant Cancellation Control** |

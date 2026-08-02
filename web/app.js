@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     virtualBanner: document.getElementById('virtual-banner'),
     vBannerText: document.getElementById('v-banner-text'),
     btnRenderAll: document.getElementById('btn-render-all'),
+    btnStopRender: document.getElementById('btn-stop-render'),
     appVersion: document.getElementById('app-version'),
     verInfo: document.getElementById('ver-info'),
     btnCheckUpdate: document.getElementById('btn-check-update'),
@@ -52,6 +53,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let progressPollTimer = null;
   let updateState = 'idle'; // 'idle', 'downloading', 'ready'
   let targetVerStr = '';
+  let isRenderingActive = false;
+  let abortRendering = false;
 
   // Initialize
   loadVersion();
@@ -69,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnCopyModal.addEventListener('click', copyModalContent);
   dom.btnCloseModal.addEventListener('click', closeModal);
   dom.btnRenderAll.addEventListener('click', renderRemainingTextAsync);
+  if (dom.btnStopRender) dom.btnStopRender.addEventListener('click', stopRendering);
   if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', handleUpdateButtonClick);
 
   window.addEventListener('click', (e) => {
@@ -225,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let v = data.version;
         if (!v.startsWith('v')) v = 'v' + v;
         if (dom.appVersion) dom.appVersion.textContent = v;
-        if (dom.verInfo) dom.verInfo.textContent = `codedocs ${v}`;
+        if (dom.verInfo) dom.verInfo.textContent = `CodePulse AI ${v}`;
       }
     } catch {
       // ignore
@@ -498,6 +502,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cachedFullText = null;
     contentLoaded = false;
     isFullRendered = false;
+    abortRendering = false;
+    isRenderingActive = false;
 
     dom.virtualBanner.style.display = 'none';
     dom.editor.value = '';
@@ -609,11 +615,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const initialSlice = text.slice(0, PREVIEW_LIMIT);
         dom.editor.value = initialSlice + `\n\n... [⚡ FAST PREVIEW MODE: Showing initial 300 KB of ${formatBytes(text.length)}. Click "Load All Lines" above to render remaining content] ...`;
         
-        dom.vBannerText.textContent = `⚡ High-Performance Fast Preview Mode: Loaded initial 300 KB of ${formatBytes(text.length)} (0ms UI lag).`;
+        dom.vBannerText.textContent = `⚡ Fast Preview Mode: Showing initial 300 KB of ${formatBytes(text.length)} (0ms UI lag). Click Copy Docs anytime for 100% full text!`;
         dom.virtualBanner.style.display = 'flex';
         dom.btnRenderAll.style.display = '';
         dom.btnRenderAll.disabled = false;
         dom.btnRenderAll.textContent = '📄 Load All Lines (Async)';
+        if (dom.btnStopRender) dom.btnStopRender.style.display = 'none';
         isFullRendered = false;
       }
 
@@ -624,26 +631,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function stopRendering() {
+    if (isRenderingActive) {
+      abortRendering = true;
+      isRenderingActive = false;
+      if (dom.btnStopRender) dom.btnStopRender.style.display = 'none';
+      if (dom.btnRenderAll) {
+        dom.btnRenderAll.disabled = false;
+        dom.btnRenderAll.style.display = '';
+        dom.btnRenderAll.textContent = '📄 Resume / Render All Lines';
+      }
+      showToast('⏸ Rendering paused. Click "Copy Docs" to get full text directly!');
+    }
+  }
+
   function renderRemainingTextAsync() {
     if (!cachedFullText || isFullRendered) return;
 
-    dom.btnRenderAll.disabled = true;
-    dom.btnRenderAll.textContent = '⏳ Rendering...';
+    isRenderingActive = true;
+    abortRendering = false;
+
+    if (dom.btnRenderAll) dom.btnRenderAll.style.display = 'none';
+    if (dom.btnStopRender) dom.btnStopRender.style.display = 'inline-block';
 
     const fullText = cachedFullText;
     const totalLength = fullText.length;
-    const chunkSize = 250 * 1024; // 250KB per animation frame
+    const chunkSize = 500 * 1024; // 500KB fast chunk size
     let offset = dom.editor.value.indexOf('\n\n... [⚡ FAST PREVIEW MODE');
     if (offset < 0) offset = 300 * 1024;
 
     dom.editor.value = fullText.slice(0, offset);
 
     function step() {
+      if (abortRendering) {
+        isRenderingActive = false;
+        return;
+      }
+
       if (offset >= totalLength) {
         dom.editor.value = fullText;
         isFullRendered = true;
+        isRenderingActive = false;
         dom.virtualBanner.style.display = 'none';
-        showToast('✅ Full document rendered with 0ms UI lag!');
+        if (dom.btnStopRender) dom.btnStopRender.style.display = 'none';
+        showToast('✅ Full document rendered successfully!');
         return;
       }
 
