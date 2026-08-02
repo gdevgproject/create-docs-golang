@@ -256,6 +256,7 @@ func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	info, err := updater.CheckUpdate(s.cfg.Version)
 	if err != nil {
 		s.jsonError(w, err.Error(), http.StatusInternalServerError)

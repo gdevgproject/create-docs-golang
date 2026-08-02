@@ -59,7 +59,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize
   loadVersion();
   loadBookmarks();
-  silentCheckUpdate();
+  silentCheckUpdate(false);
+
+  // Periodically check GitHub for new releases every 3 minutes
+  setInterval(() => silentCheckUpdate(false), 3 * 60 * 1000);
 
   // Event Listeners
   dom.btnAddBm.addEventListener('click', addBookmark);
@@ -74,6 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnRenderAll.addEventListener('click', renderRemainingTextAsync);
   if (dom.btnStopRender) dom.btnStopRender.addEventListener('click', stopRendering);
   if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', handleUpdateButtonClick);
+  if (dom.verInfo) dom.verInfo.addEventListener('click', () => silentCheckUpdate(true));
+  if (dom.appVersion) dom.appVersion.addEventListener('click', () => silentCheckUpdate(true));
 
   window.addEventListener('click', (e) => {
     if (e.target === dom.modal) closeModal();
@@ -236,10 +241,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Silent background check on app startup (Zero UI clutter if no update!)
-  async function silentCheckUpdate() {
+  // Check update with GitHub API cache buster & periodic background polling
+  async function silentCheckUpdate(manual = false) {
+    if (manual) showToast('🔍 Checking GitHub for updates...');
+
     try {
-      const res = await fetch('api/check-update');
+      const res = await fetch(`api/check-update?t=${Date.now()}`);
       const info = await res.json();
 
       if (info.has_update) {
@@ -254,11 +261,13 @@ document.addEventListener('DOMContentLoaded', () => {
           dom.btnCheckUpdate.style.display = 'inline-block';
           updateState = 'idle';
         }
+        if (manual) showToast(`✨ Update available: ${targetVerStr}`);
       } else {
         if (dom.btnCheckUpdate) dom.btnCheckUpdate.style.display = 'none';
+        if (manual) showToast(`✅ You are on the latest version (${info.current_version})`);
       }
     } catch {
-      // ignore network errors
+      if (manual) showToast('❌ Unable to check GitHub updates');
     }
   }
 
