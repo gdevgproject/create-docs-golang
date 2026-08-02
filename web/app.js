@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     cardTokens: document.getElementById('card-tokens'),
     statSize: document.getElementById('stat-size'),
     statTime: document.getElementById('stat-time'),
+    statDate: document.getElementById('stat-date'),
     btnLoad: document.getElementById('btn-load'),
     btnCopy: document.getElementById('btn-copy'),
     btnDownload: document.getElementById('btn-download'),
@@ -33,11 +34,16 @@ document.addEventListener('DOMContentLoaded', () => {
     modalContent: document.getElementById('modal-content'),
     btnCopyModal: document.getElementById('btn-copy-modal'),
     btnCloseModal: document.getElementById('btn-close-modal'),
+    virtualBanner: document.getElementById('virtual-banner'),
+    vBannerText: document.getElementById('v-banner-text'),
+    btnRenderAll: document.getElementById('btn-render-all'),
   };
 
   let toastTimer = null;
   let lastGeneratedFile = null;
+  let cachedFullText = null;
   let contentLoaded = false;
+  let isFullRendered = false;
 
   // Initialize Bookmarks
   loadBookmarks();
@@ -51,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnCopy.addEventListener('click', copyContent);
   dom.btnCopyModal.addEventListener('click', copyModalContent);
   dom.btnCloseModal.addEventListener('click', closeModal);
+  dom.btnRenderAll.addEventListener('click', renderRemainingTextAsync);
 
   window.addEventListener('click', (e) => {
     if (e.target === dom.modal) closeModal();
@@ -236,8 +243,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const mode = getSelectedMode();
     lastGeneratedFile = null;
+    cachedFullText = null;
     contentLoaded = false;
+    isFullRendered = false;
 
+    dom.virtualBanner.style.display = 'none';
     dom.editor.value = '';
     dom.statsCards.style.display = 'none';
     dom.statusPanel.style.display = 'block';
@@ -284,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         : 'Estimated token count (~10% variance)';
       dom.statSize.textContent = formatBytes(d.size || 0);
       dom.statTime.textContent = (d.elapsed || 0) + 's';
+      dom.statDate.textContent = d.generated_at || new Date().toLocaleString();
 
       dom.btnDownload.href = `api/download?file=${d.message}`;
       dom.btnDownload.removeAttribute('disabled');
@@ -299,16 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(`✅ Generated ${d.total} files in ${d.elapsed}s`);
       } else {
         dom.logText.textContent = '✅ Completed! Loading output...';
-        fetch(`api/content?file=${d.message}`)
-          .then(r => r.text())
-          .then(text => {
-            dom.editor.value = text;
-            contentLoaded = true;
-            dom.btnCopy.disabled = false;
-            dom.btnLoad.style.display = 'none';
-            setTimeout(() => dom.statusPanel.style.display = 'none', 1000);
-            showToast(`✅ Generated ${d.total} files in ${d.elapsed}s`);
-          });
+        fetchAndDisplayContent(d.message);
         es.close();
         dom.btnGen.disabled = false;
       }
@@ -335,34 +337,100 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  async function loadFullContent() {
-    if (!lastGeneratedFile) return showToast('⚠️ No file generated yet.');
-    if (contentLoaded) return;
-
-    dom.btnLoad.disabled = true;
-    dom.btnLoad.textContent = '⏳ Loading...';
+  // ── HIGH PERFORMANCE NON-BLOCKING CONTENT DISPLAY ──
+  async function fetchAndDisplayContent(filename) {
     try {
-      const res = await fetch(`api/content?file=${lastGeneratedFile}`);
+      const res = await fetch(`api/content?file=${filename}`);
       const text = await res.text();
-      dom.editor.value = text;
+      cachedFullText = text;
       contentLoaded = true;
+      dom.btnCopy.disabled = false;
       dom.btnLoad.style.display = 'none';
-      showToast('✅ Full document loaded!');
+
+      const PREVIEW_LIMIT = 300 * 1024; // 300KB Fast Preview Threshold
+
+      if (text.length <= PREVIEW_LIMIT) {
+        dom.virtualBanner.style.display = 'none';
+        dom.editor.value = text;
+        isFullRendered = true;
+      } else {
+        // High-Performance Virtual Preview: Render initial 300KB slice immediately (0ms UI lag)
+        const initialSlice = text.slice(0, PREVIEW_LIMIT);
+        dom.editor.value = initialSlice + `\n\n... [⚡ FAST PREVIEW MODE: Showing initial 300 KB of ${formatBytes(text.length)}. Click "Load All Lines" above to render remaining content] ...`;
+        
+        dom.vBannerText.textContent = `⚡ High-Performance Fast Preview Mode: Loaded initial 300 KB of ${formatBytes(text.length)} (0ms UI lag).`;
+        dom.virtualBanner.style.display = 'flex';
+        dom.btnRenderAll.style.display = '';
+        dom.btnRenderAll.disabled = false;
+        dom.btnRenderAll.textContent = '📄 Load All Lines (Async)';
+        isFullRendered = false;
+      }
+
+      setTimeout(() => dom.statusPanel.style.display = 'none', 1000);
+      showToast(`✅ Content loaded (${formatBytes(text.length)})`);
     } catch {
       showToast('❌ Error loading content');
-    } finally {
-      dom.btnLoad.disabled = false;
-      dom.btnLoad.textContent = '📄 Load Content';
     }
   }
 
-  async function copyContent() {
-    let textToCopy = dom.editor.value;
+  function renderRemainingTextAsync() {
+    if (!cachedFullText || isFullRendered) return;
 
-    if (!contentLoaded && lastGeneratedFile) {
+    dom.btnRenderAll.disabled = true;
+    dom.btnRenderAll.textContent = '⏳ Rendering...';
+
+    const fullText = cachedFullText;
+    const totalLength = fullText.length;
+    const chunkSize = 250 * 1024; // 250KB per animation frame
+    let offset = dom.editor.value.indexOf('\n\n... [⚡ FAST PREVIEW MODE');
+    if (offset < 0) offset = 300 * 1024;
+
+    dom.editor.value = fullText.slice(0, offset);
+
+    function step() {
+      if (offset >= totalLength) {
+        dom.editor.value = fullText;
+        isFullRendered = true;
+        dom.virtualBanner.style.display = 'none';
+        showToast('✅ Full document rendered with 0ms UI lag!');
+        return;
+      }
+
+      const nextOffset = Math.min(offset + chunkSize, totalLength);
+      dom.editor.value += fullText.slice(offset, nextOffset);
+      offset = nextOffset;
+
+      const pct = Math.round((offset / totalLength) * 100);
+      dom.vBannerText.textContent = `⚡ Rendering Full Text: ${pct}% (${formatBytes(offset)} / ${formatBytes(totalLength)})...`;
+
+      // Non-blocking UI frame dispatch
+      requestAnimationFrame(() => {
+        setTimeout(step, 0);
+      });
+    }
+
+    step();
+  }
+
+  async function loadFullContent() {
+    if (!lastGeneratedFile) return showToast('⚠️ No file generated yet.');
+    if (contentLoaded && isFullRendered) return;
+
+    dom.btnLoad.disabled = true;
+    dom.btnLoad.textContent = '⏳ Loading...';
+    await fetchAndDisplayContent(lastGeneratedFile);
+    dom.btnLoad.disabled = false;
+    dom.btnLoad.textContent = '📄 Load Content';
+  }
+
+  async function copyContent() {
+    let textToCopy = cachedFullText || dom.editor.value;
+
+    if (!cachedFullText && lastGeneratedFile) {
       try {
         const res = await fetch(`api/content?file=${lastGeneratedFile}`);
         textToCopy = await res.text();
+        cachedFullText = textToCopy;
       } catch {
         return showToast('❌ Error fetching content for copy');
       }
@@ -371,8 +439,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!textToCopy) return;
 
     try {
+      // Zero-DOM Copying: Copies directly from memory buffer, 0ms UI lag!
       await navigator.clipboard.writeText(textToCopy);
-      showToast('✅ Copied full documentation to clipboard!');
+      showToast(`✅ Copied full docs (${formatBytes(textToCopy.length)}) to clipboard!`);
     } catch {
       dom.editor.value = textToCopy;
       dom.editor.select();

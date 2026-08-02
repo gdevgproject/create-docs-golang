@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"codedocs/internal/config"
 	"codedocs/internal/generator"
@@ -95,8 +96,9 @@ func (s *Server) handleGetStructure(w http.ResponseWriter, r *http.Request) {
 
 	totalFiles := len(files)
 	totalLines := s.sc.CountProjectLinesFast(files, s.cfg.MaxFileSize)
+	localDate := time.Now().Local().Format("2006-01-02 15:04:05 (-07:00)")
 
-	treeString := fmt.Sprintf("<!-- Stats: %d files | %s lines of code -->\n", totalFiles, formatInt(totalLines))
+	treeString := fmt.Sprintf("<!-- Stats: %d files | %s lines of code | Date: %s -->\n", totalFiles, formatInt(totalLines), localDate)
 	treeString += scanner.GenerateDirectoryTree(path, files)
 
 	s.jsonResponse(w, map[string]any{

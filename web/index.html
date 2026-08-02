@@ -88,6 +88,10 @@
               <span class="stat-lbl">TIME</span>
               <span class="stat-val" id="stat-time">–</span>
             </div>
+            <div class="stat-card" id="card-date" title="Exact local generation timestamp">
+              <span class="stat-lbl">LOCAL TIME</span>
+              <span class="stat-val" id="stat-date">–</span>
+            </div>
           </div>
         </div>
 
@@ -99,6 +103,17 @@
       </header>
 
       <div class="editor-wrapper">
+        <!-- HIGH-PERFORMANCE VIRTUAL PREVIEW CONTROL BANNER -->
+        <div class="virtual-banner" id="virtual-banner" style="display:none;">
+          <div class="v-banner-left">
+            <span class="v-pulse-icon">⚡</span>
+            <span class="v-banner-text" id="v-banner-text">High-Performance Fast Preview Mode</span>
+          </div>
+          <div class="v-banner-actions">
+            <button class="action-btn ghost sm" id="btn-render-all">📄 Load All Lines (Async)</button>
+          </div>
+        </div>
+
         <textarea id="editor" class="code-editor" readonly placeholder="Documentation XML output will appear here after clicking Generate..."></textarea>
 
         <!-- PROGRESS OVERLAY -->

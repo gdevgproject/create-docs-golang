@@ -35,6 +35,7 @@ type GenerateResult struct {
 	Elapsed     float64 `json:"elapsed"`
 	SizeBytes   int64   `json:"size"`
 	Mode        string  `json:"mode"`
+	GeneratedAt string  `json:"generated_at"`
 }
 
 type Generator struct {
@@ -80,6 +81,8 @@ type result struct {
 // Generate scans projectPath and streams output to target markdown file while sending progress events
 func (g *Generator) Generate(ctx context.Context, projectPath string, mode string, events chan<- ProgressEvent) (*GenerateResult, error) {
 	startTime := time.Now()
+	localNow := startTime.Local()
+	formattedLocalTime := localNow.Format("2006-01-02 15:04:05 (-07:00)")
 
 	cleanPath := filepath.Clean(projectPath)
 	info, err := os.Stat(cleanPath)
@@ -127,7 +130,7 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 		projName = "project"
 	}
 	safeName := safeFilenameRegex.ReplaceAllString(projName, "_")
-	timestamp := time.Now().Format("20060102_150405")
+	timestamp := localNow.Format("20060102_150405")
 	fileName := fmt.Sprintf("docs_%s_%s.md", safeName, timestamp)
 	outFilePath := filepath.Join(g.cfg.TempDir, fileName)
 
@@ -139,8 +142,8 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 
 	writer := bufio.NewWriterSize(outFile, g.bufferCap)
 
-	// Write Document Header
-	header := fmt.Sprintf("# DOCUMENTATION: %s\nGenerated: %s\n\n", projName, time.Now().Format("2006-01-02 15:04:05"))
+	// Write Document Header with exact local datetime
+	header := fmt.Sprintf("# DOCUMENTATION: %s\nGenerated: %s\n\n", projName, formattedLocalTime)
 	header += "## SYSTEM INSTRUCTION (Prompt)\n"
 	header += "You are an expert AI assistant. The following text contains the full source code of a project.\n"
 	header += "1. **Structure**: Refer to the 'Directory Tree' for file organization.\n"
@@ -258,7 +261,7 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 	if tokenMode != "exact" {
 		tokenLabel = fmt.Sprintf("~%d tokens (estimate)", totalTokens)
 	}
-	footer += fmt.Sprintf("<!-- Stats: %d files | %d lines of code | %s | Generated in %.2fs -->", totalFiles, totalLines, tokenLabel, elapsed)
+	footer += fmt.Sprintf("<!-- Stats: %d files | %d lines of code | %s | Generated on %s in %.2fs -->", totalFiles, totalLines, tokenLabel, formattedLocalTime, elapsed)
 	_, _ = writer.WriteString(footer)
 
 	_ = writer.Flush()
@@ -280,6 +283,7 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 		Elapsed:     elapsed,
 		SizeBytes:   sizeBytes,
 		Mode:        mode,
+		GeneratedAt: formattedLocalTime,
 	}
 
 	if events != nil {
@@ -287,13 +291,14 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 			Type:    "complete",
 			Message: fileName,
 			Data: map[string]any{
-				"total":      totalFiles,
-				"lines":      totalLines,
-				"tokens":     totalTokens,
-				"token_mode": tokenMode,
-				"elapsed":    elapsed,
-				"size":       sizeBytes,
-				"mode":       mode,
+				"total":        totalFiles,
+				"lines":        totalLines,
+				"tokens":       totalTokens,
+				"token_mode":   tokenMode,
+				"elapsed":      elapsed,
+				"size":         sizeBytes,
+				"mode":         mode,
+				"generated_at": formattedLocalTime,
 			},
 		}
 	}
