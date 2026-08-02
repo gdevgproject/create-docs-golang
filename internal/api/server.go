@@ -64,6 +64,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET "+bp+"/api/check-update", s.handleCheckUpdate)
 	s.mux.HandleFunc("POST "+bp+"/api/apply-update", s.handleApplyUpdate)
 	s.mux.HandleFunc("POST "+bp+"/api/shutdown", s.handleShutdown)
+	s.mux.HandleFunc("GET "+bp+"/api/ping", s.handlePing)
 
 	// Legacy PHP route compatibility support
 	s.mux.HandleFunc("GET "+bp+"/index.php", s.handleLegacyQueryRoute)

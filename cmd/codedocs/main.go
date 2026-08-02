@@ -33,7 +33,6 @@ func main() {
 	}
 	defer listener.Close()
 
-	// Update actual bound port
 	actualPort := listener.Addr().(*net.TCPAddr).Port
 	cfg.Port = actualPort
 
@@ -52,6 +51,7 @@ func main() {
 
 	shutdownComplete := make(chan struct{})
 
+	// Signal & App Cancellation handler
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -66,10 +66,27 @@ func main() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer shutdownCancel()
 
-		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			slog.Error("HTTP server shutdown error", "error", err)
-		}
+		_ = httpServer.Shutdown(shutdownCtx)
 		close(shutdownComplete)
+	}()
+
+	// Heartbeat monitor: After client connects, if no ping received for > 8s (meaning app window was closed), shut down!
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if api.HasConnected() && time.Since(api.GetLastHeartbeat()) > 8*time.Second {
+					slog.Info("No web UI connected for > 8s. Auto closing server...")
+					cancelApp()
+					return
+				}
+			case <-appCtx.Done():
+				return
+			}
+		}
 	}()
 
 	serverURL := fmt.Sprintf("http://localhost:%d%s", cfg.Port, cfg.BasePath)
@@ -83,11 +100,10 @@ func main() {
 	if cfg.OpenBrowser {
 		go func() {
 			time.Sleep(300 * time.Millisecond)
-			openAppWindow(cancelApp, serverURL)
+			openAppWindow(serverURL)
 		}()
 	}
 
-	// Serve requests on bound listener
 	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("Server error", "error", err)
 		cancelApp()
@@ -110,7 +126,7 @@ func findAvailableListener(host string, startPort int, maxTries int) (net.Listen
 	return nil, fmt.Errorf("no free ports found between %d and %d", startPort, startPort+maxTries-1)
 }
 
-func openAppWindow(cancelApp context.CancelFunc, url string) {
+func openAppWindow(url string) {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
@@ -130,30 +146,17 @@ func openAppWindow(cancelApp context.CancelFunc, url string) {
 		}
 
 		if foundEdge != "" {
-			// Open in App Window mode and wait for window close
 			cmd = exec.Command(foundEdge, "--app="+url, "--window-size=1280,850")
 		} else {
 			cmd = exec.Command("cmd", "/c", "start", url)
 		}
 	case "darwin":
-		cmd = exec.Command("open", "-W", "-a", "Google Chrome", "--args", "--app="+url)
+		cmd = exec.Command("open", "-a", "Google Chrome", "--args", "--app="+url)
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
 
-	if cmd == nil {
-		return
+	if cmd != nil {
+		_ = cmd.Start()
 	}
-
-	if err := cmd.Start(); err != nil {
-		slog.Error("Failed to launch app window", "error", err)
-		return
-	}
-
-	// WAIT FOR THE WINDOW TO BE CLOSED BY THE USER!
-	_ = cmd.Wait()
-
-	// User closed the window: immediately kill the Go backend process!
-	slog.Info("Detected window close. Triggering process shutdown...")
-	cancelApp()
 }

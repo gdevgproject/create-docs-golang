@@ -68,13 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === dom.modal) closeModal();
   });
 
-  window.addEventListener('beforeunload', () => {
-    try {
-      navigator.sendBeacon('api/shutdown');
-    } catch {
-      // ignore
-    }
-  });
+  // Heartbeat ping to keep backend alive while window is open
+  function sendPing() {
+    fetch('api/ping').catch(() => {});
+  }
+  sendPing();
+  setInterval(sendPing, 3000);
 
   function getSelectedMode() {
     const el = document.querySelector('input[name="gen-mode"]:checked');

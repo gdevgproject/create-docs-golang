@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"codedocs/internal/config"
@@ -299,4 +300,31 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
 		os.Exit(0)
 	}()
+}
+
+var (
+	hbMu               sync.RWMutex
+	lastHeartbeatTime  = time.Now()
+	hasClientConnected = false
+)
+
+func GetLastHeartbeat() time.Time {
+	hbMu.RLock()
+	defer hbMu.RUnlock()
+	return lastHeartbeatTime
+}
+
+func HasConnected() bool {
+	hbMu.RLock()
+	defer hbMu.RUnlock()
+	return hasClientConnected
+}
+
+func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
+	hbMu.Lock()
+	lastHeartbeatTime = time.Now()
+	hasClientConnected = true
+	hbMu.Unlock()
+
+	s.jsonResponse(w, map[string]string{"status": "pong"})
 }
