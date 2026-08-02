@@ -1,0 +1,73 @@
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Extract Tag Name
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          if [ "$VERSION" = "refs/heads/main" ] || [ -z "$VERSION" ]; then
+            VERSION="v1.0.0"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Build Cross-Platform Binaries
+        run: |
+          mkdir -p dist
+          
+          # Windows x64
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_windows_amd64.exe ./cmd/codedocs
+          
+          # Windows ARM64
+          GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_windows_arm64.exe ./cmd/codedocs
+          
+          # macOS Apple Silicon
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_darwin_arm64 ./cmd/codedocs
+          
+          # Linux x64
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_linux_amd64 ./cmd/codedocs
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          body: |
+            ## 🚀 Codebase-to-Docs Generator (${{ env.VERSION }})
+            
+            Standalone binaries built automatically via GitHub Actions.
+            
+            ### Downloads
+            - **Windows x64**: `codedocs_windows_amd64.exe`
+            - **Windows ARM64**: `codedocs_windows_arm64.exe`
+            - **macOS Apple Silicon**: `codedocs_darwin_arm64`
+            - **Linux x64**: `codedocs_linux_amd64`
+          files: |
+            dist/codedocs_windows_amd64.exe
+            dist/codedocs_windows_arm64.exe
+            dist/codedocs_darwin_arm64
+            dist/codedocs_linux_amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
