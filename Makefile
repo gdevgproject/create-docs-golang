@@ -55,6 +55,14 @@ clean:
 	@rm -rf $(BINARY_NAME) $(BINARY_NAME).exe $(DIST_DIR) temp_docs
 	@echo "✅ Cleaned."
 
+## release: Tag and publish a new GitHub Release (e.g. make release V=v1.0.1)
+release:
+	@if [ -z "$(V)" ]; then echo "❌ Error: Please specify version, e.g. make release V=v1.0.1"; exit 1; fi
+	@echo "🚀 Creating git release tag $(V)..."
+	git tag $(V)
+	git push origin $(V)
+	@echo "✅ Release tag $(V) pushed! GitHub Actions is building and uploading release binaries."
+
 ## help: Show Makefile target help
 help:
 	@echo "Available Makefile targets:"
