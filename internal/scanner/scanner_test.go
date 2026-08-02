@@ -10,15 +10,20 @@ import (
 func TestScanner_ScanProjectFiles(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Create test folder structure
+	// Create test folder structure across multiple ecosystems
 	os.MkdirAll(filepath.Join(tempDir, "src"), 0755)
 	os.MkdirAll(filepath.Join(tempDir, "node_modules", "lib"), 0755)
+	os.MkdirAll(filepath.Join(tempDir, ".next", "cache"), 0755)
+	os.MkdirAll(filepath.Join(tempDir, "target", "classes"), 0755)
+	os.MkdirAll(filepath.Join(tempDir, "bin", "Debug"), 0755)
 	os.MkdirAll(filepath.Join(tempDir, ".git"), 0755)
 
 	os.WriteFile(filepath.Join(tempDir, "src", "main.go"), []byte("package main\n\nfunc main() {}\n"), 0644)
 	os.WriteFile(filepath.Join(tempDir, "src", "logo.png"), []byte("dummy binary"), 0644)
 	os.WriteFile(filepath.Join(tempDir, ".env"), []byte("SECRET=123"), 0644)
 	os.WriteFile(filepath.Join(tempDir, "node_modules", "lib", "index.js"), []byte("console.log()"), 0644)
+	os.WriteFile(filepath.Join(tempDir, ".next", "cache", "build.js"), []byte("build"), 0644)
+	os.WriteFile(filepath.Join(tempDir, "target", "classes", "App.class"), []byte("class"), 0644)
 
 	s := NewScanner()
 
@@ -28,13 +33,49 @@ func TestScanner_ScanProjectFiles(t *testing.T) {
 	}
 
 	if len(files) != 2 {
-		t.Fatalf("expected 2 files (src/main.go and src/logo.png), got %d: %v", len(files), files)
+		t.Fatalf("expected 2 valid files (src/main.go and src/logo.png), got %d: %v", len(files), files)
 	}
 
 	for _, f := range files {
-		if strings.Contains(f, "node_modules") || strings.Contains(f, ".git") || strings.Contains(f, ".env") {
+		if strings.Contains(f, "node_modules") || strings.Contains(f, ".git") || strings.Contains(f, ".env") || strings.Contains(f, ".next") || strings.Contains(f, "target") {
 			t.Errorf("found excluded file/dir in results: %s", f)
 		}
+	}
+}
+
+func TestScanner_GitignoreRules(t *testing.T) {
+	tempDir := t.TempDir()
+
+	os.MkdirAll(filepath.Join(tempDir, "custom_build"), 0755)
+	os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte("custom_build\ntemp.tmp\nsecret.key\n# comment\n"), 0644)
+	os.WriteFile(filepath.Join(tempDir, "app.js"), []byte("console.log('app');"), 0644)
+	os.WriteFile(filepath.Join(tempDir, "secret.key"), []byte("12345"), 0644)
+	os.WriteFile(filepath.Join(tempDir, "temp.tmp"), []byte("temp"), 0644)
+	os.WriteFile(filepath.Join(tempDir, "custom_build", "out.js"), []byte("out"), 0644)
+
+	s := NewScanner()
+
+	files, err := s.ScanProjectFiles(tempDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, f := range files {
+		base := filepath.Base(f)
+		if base == "secret.key" || base == "temp.tmp" || strings.Contains(f, "custom_build") {
+			t.Errorf("file %s should have been excluded by .gitignore", f)
+		}
+	}
+
+	foundApp := false
+	for _, f := range files {
+		if filepath.Base(f) == "app.js" {
+			foundApp = true
+			break
+		}
+	}
+	if !foundApp {
+		t.Errorf("app.js should be included in scan results")
 	}
 }
 
@@ -52,6 +93,9 @@ func TestScanner_IsBinary(t *testing.T) {
 		{"js", false},
 		{"pdf", true},
 		{"exe", true},
+		{"zip", true},
+		{"jar", true},
+		{"pyc", true},
 	}
 
 	for _, tt := range tests {

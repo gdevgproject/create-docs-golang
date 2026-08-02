@@ -36,6 +36,36 @@ func TestAPI_GetExclusions(t *testing.T) {
 	}
 }
 
+func TestAPI_CountTokens(t *testing.T) {
+	cfg := config.DefaultConfig()
+	server := NewServer(cfg, nil)
+
+	body, _ := json.Marshal(map[string]string{
+		"text": "Hello world! This is a test snippet for o200k_base tiktoken.",
+	})
+
+	req := httptest.NewRequest("POST", "/api/count-tokens", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	var res struct {
+		Tokens    int    `json:"tokens"`
+		TokenMode string `json:"token_mode"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+
+	if res.Tokens <= 0 {
+		t.Errorf("expected positive token count, got %d", res.Tokens)
+	}
+}
+
 func TestAPI_BookmarksFlow(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.BookmarkFile = filepath.Join(t.TempDir(), "bookmarks.json")
