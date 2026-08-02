@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,31 +25,48 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
+	// Auto find available port if default port is occupied
+	listener, err := findAvailableListener(cfg.Host, cfg.Port, 10)
+	if err != nil {
+		slog.Error("Failed to bind network port", "error", err)
+		os.Exit(1)
+	}
+	defer listener.Close()
+
+	// Update actual bound port
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+	cfg.Port = actualPort
+
 	webFS := web.GetFS()
 	server := api.NewServer(cfg, webFS)
 
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	httpServer := &http.Server{
-		Addr:         addr,
 		Handler:      server,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 0, // 0 for unlimited SSE streaming
 		IdleTimeout:  120 * time.Second,
 	}
 
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+
 	shutdownComplete := make(chan struct{})
 
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-		<-sigChan
 
-		slog.Info("Shutting down server gracefully...")
+		select {
+		case <-sigChan:
+			slog.Info("Received OS termination signal...")
+		case <-appCtx.Done():
+			slog.Info("App window closed. Shutting down application...")
+		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer shutdownCancel()
 
-		if err := httpServer.Shutdown(ctx); err != nil {
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			slog.Error("HTTP server shutdown error", "error", err)
 		}
 		close(shutdownComplete)
@@ -64,26 +82,39 @@ func main() {
 
 	if cfg.OpenBrowser {
 		go func() {
-			time.Sleep(350 * time.Millisecond)
-			openAppWindow(serverURL)
+			time.Sleep(300 * time.Millisecond)
+			openAppWindow(cancelApp, serverURL)
 		}()
 	}
 
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("Server failed to start", "error", err)
-		os.Exit(1)
+	// Serve requests on bound listener
+	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("Server error", "error", err)
+		cancelApp()
 	}
 
 	<-shutdownComplete
-	slog.Info("Server stopped clean.")
+	slog.Info("Application stopped cleanly. Zero background processes left.")
+	os.Exit(0)
 }
 
-func openAppWindow(url string) {
+func findAvailableListener(host string, startPort int, maxTries int) (net.Listener, error) {
+	for i := 0; i < maxTries; i++ {
+		port := startPort + i
+		addr := fmt.Sprintf("%s:%d", host, port)
+		l, err := net.Listen("tcp", addr)
+		if err == nil {
+			return l, nil
+		}
+	}
+	return nil, fmt.Errorf("no free ports found between %d and %d", startPort, startPort+maxTries-1)
+}
+
+func openAppWindow(cancelApp context.CancelFunc, url string) {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "windows":
-		// Check for Microsoft Edge (Standard on Windows 10/11) for Native App Window Mode (--app=URL)
 		edgePaths := []string{
 			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
 			`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
@@ -99,18 +130,30 @@ func openAppWindow(url string) {
 		}
 
 		if foundEdge != "" {
-			// Open as standalone Windows Desktop Application Window (no address bar, no tabs)
+			// Open in App Window mode and wait for window close
 			cmd = exec.Command(foundEdge, "--app="+url, "--window-size=1280,850")
 		} else {
 			cmd = exec.Command("cmd", "/c", "start", url)
 		}
 	case "darwin":
-		cmd = exec.Command("open", "-a", "Google Chrome", "--args", "--app="+url)
+		cmd = exec.Command("open", "-W", "-a", "Google Chrome", "--args", "--app="+url)
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
 
-	if cmd != nil {
-		_ = cmd.Start()
+	if cmd == nil {
+		return
 	}
+
+	if err := cmd.Start(); err != nil {
+		slog.Error("Failed to launch app window", "error", err)
+		return
+	}
+
+	// WAIT FOR THE WINDOW TO BE CLOSED BY THE USER!
+	_ = cmd.Wait()
+
+	// User closed the window: immediately kill the Go backend process!
+	slog.Info("Detected window close. Triggering process shutdown...")
+	cancelApp()
 }

@@ -68,6 +68,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === dom.modal) closeModal();
   });
 
+  window.addEventListener('beforeunload', () => {
+    try {
+      navigator.sendBeacon('api/shutdown');
+    } catch {
+      // ignore
+    }
+  });
+
   function getSelectedMode() {
     const el = document.querySelector('input[name="gen-mode"]:checked');
     return el ? el.value : 'stats';

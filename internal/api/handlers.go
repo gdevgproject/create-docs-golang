@@ -288,3 +288,15 @@ func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 		_ = updater.ApplyUpdate(body.DownloadURL)
 	}()
 }
+
+func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, map[string]string{
+		"status":  "success",
+		"message": "Shutting down application...",
+	})
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		os.Exit(0)
+	}()
+}
