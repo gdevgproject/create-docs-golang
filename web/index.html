@@ -11,62 +11,81 @@
   <!-- ══ SIDEBAR ══ -->
   <aside class="sidebar">
     <div class="brand">
-      <svg class="brand-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg class="brand-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
       </svg>
       <div class="brand-text">
         <span class="brand-title">CodePulse AI</span>
-        <span class="brand-badge" id="app-version">v1.4.0</span>
+        <span class="brand-badge" id="app-version">v1.4.3</span>
       </div>
     </div>
 
-    <div class="input-group">
-      <label class="input-label" for="path-input">Project Path</label>
-      <input type="text" id="path-input" class="input-control" placeholder="e.g. D:/projects/my-app or /var/www/project">
-    </div>
+    <!-- SECTION 1: TARGET PATH & CORE ACTIONS -->
+    <div class="sidebar-section">
+      <div class="input-group">
+        <label class="input-label" for="path-input">Target Project Path</label>
+        <input type="text" id="path-input" class="input-control" placeholder="e.g. D:/projects/my-app or /var/www/project">
+      </div>
 
-    <div class="mode-selector" id="mode-selector">
-      <label class="mode-btn">
-        <input type="radio" name="gen-mode" value="full">
-        <span>📄 Full Content</span>
-      </label>
-      <label class="mode-btn">
-        <input type="radio" name="gen-mode" value="stats" checked>
-        <span>📊 Stats Only</span>
-      </label>
-    </div>
-
-    <div class="btn-group">
-      <button class="btn btn-secondary" id="btn-struct">🌳 Structure</button>
-      <button class="btn btn-primary" id="btn-gen">⚡ Generate</button>
-    </div>
-
-    <div class="btn-group">
-      <button class="btn btn-ghost" id="btn-counter" style="flex:1;">🧮 Token Counter</button>
-      <button class="btn btn-ghost" id="btn-exclusions" style="flex:1;">🚫 Ignored</button>
+      <div class="btn-group vertical">
+        <button class="btn btn-primary btn-block" id="btn-gen">⚡ Generate Context</button>
+        <button class="btn btn-secondary btn-block" id="btn-struct">🌳 Directory Tree</button>
+      </div>
     </div>
 
     <hr class="divider">
 
-    <div class="bm-header">
-      <label class="input-label">Saved Bookmarks</label>
-      <span class="bm-count" id="bm-count">0</span>
-    </div>
-
-    <div class="bm-add-row">
-      <input type="text" id="bm-note" class="input-control" placeholder="Project label...">
-      <button class="btn btn-secondary btn-icon" id="btn-add-bm" title="Save current path">＋</button>
-    </div>
-
-    <div class="bookmarks-area" id="bm-list">
-      <div class="bm-empty">No bookmarks saved yet</div>
+    <!-- SECTION 2: OUTPUT MODE -->
+    <div class="sidebar-section">
+      <label class="input-label">Generation Mode</label>
+      <div class="mode-selector" id="mode-selector">
+        <label class="mode-btn">
+          <input type="radio" name="gen-mode" value="full">
+          <span>📄 Full Content</span>
+        </label>
+        <label class="mode-btn">
+          <input type="radio" name="gen-mode" value="stats" checked>
+          <span>📊 Stats Only</span>
+        </label>
+      </div>
     </div>
 
     <hr class="divider">
 
+    <!-- SECTION 3: UTILITY TOOLS -->
+    <div class="sidebar-section">
+      <label class="input-label">Developer Tools</label>
+      <div class="btn-group">
+        <button class="btn btn-ghost" id="btn-counter" style="flex:1;">🧮 Token Counter</button>
+        <button class="btn btn-ghost" id="btn-exclusions" style="flex:1;">🚫 Ignored List</button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- SECTION 4: BOOKMARKS -->
+    <div class="sidebar-section flex-1">
+      <div class="bm-header">
+        <label class="input-label">Saved Bookmarks</label>
+        <span class="bm-count" id="bm-count">0</span>
+      </div>
+
+      <div class="bm-add-row">
+        <input type="text" id="bm-note" class="input-control" placeholder="Project label...">
+        <button class="btn btn-secondary btn-icon" id="btn-add-bm" title="Save current path">＋</button>
+      </div>
+
+      <div class="bookmarks-area" id="bm-list">
+        <div class="bm-empty">No bookmarks saved yet</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- SECTION 5: FOOTER VERSION & IN-PLACE UPDATER -->
     <div class="version-row">
-      <span class="version-text" id="ver-info">codedocs v1.1.1</span>
-      <button class="btn-update-badge" id="btn-check-update" style="display:none;" title="Click to view update details">✨ Update Available</button>
+      <span class="version-text" id="ver-info">CodePulse AI v1.4.3</span>
+      <button class="btn-update-badge" id="btn-check-update" style="display:none;" title="Click to update application">✨ Update Available</button>
     </div>
   </aside>
 
@@ -135,36 +154,36 @@
               <span class="pulse-dot"></span>
               <span>Generating Codebase Docs...</span>
             </div>
-            <div class="overlay-meta">
-              <span class="overlay-speed" id="speed-text">0 files/s</span>
-              <span class="overlay-pct" id="percent-text">0%</span>
-            </div>
+            <span class="overlay-pct" id="percent-text">0%</span>
           </div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progress-fill"></div>
           </div>
-          <div class="log-text" id="log-text">Initializing scanner...</div>
+          <div class="overlay-sub">
+            <span class="overlay-speed" id="speed-text"></span>
+            <span class="overlay-log" id="log-text">Initializing worker pool...</span>
+          </div>
         </div>
       </div>
     </div>
   </main>
 
-  <!-- TOAST NOTIFICATION -->
-  <div class="toast" id="toast"></div>
-
-  <!-- MODAL DIALOG -->
-  <div class="modal" id="modal-dialog">
+  <!-- ══ DIALOG / MODAL ══ -->
+  <div class="modal-overlay" id="modal-dialog" style="display:none;">
     <div class="modal-box">
-      <header class="modal-head">
+      <div class="modal-head">
         <span id="modal-title">Modal Title</span>
         <div class="modal-actions">
-          <button class="action-btn ghost" id="btn-copy-modal">📋 Copy</button>
-          <button class="action-btn ghost" id="btn-close-modal">✕ Close</button>
+          <button class="btn btn-secondary sm" id="btn-copy-modal">Copy</button>
+          <button class="btn btn-ghost sm" id="btn-close-modal">✕ Close</button>
         </div>
-      </header>
+      </div>
       <div class="modal-body" id="modal-content"></div>
     </div>
   </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast" id="toast"></div>
 
   <script src="app.js"></script>
 </body>

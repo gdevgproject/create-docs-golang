@@ -46,6 +46,25 @@ body {
   flex-direction: column;
   padding: 20px 18px;
   flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flex-1 {
+  flex: 1;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+}
+
+.btn-group.vertical {
+  flex-direction: column;
+  gap: 8px;
 }
 
 .brand {
