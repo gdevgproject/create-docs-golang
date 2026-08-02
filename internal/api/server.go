@@ -44,6 +44,9 @@ func NewServer(cfg *config.Config, webFS fs.FS) *Server {
 		mux:   http.NewServeMux(),
 	}
 
+	// Warm up tiktoken o200k_base dictionary in background on startup for 0ms cold start
+	go tok.Mode()
+
 	s.routes()
 	return s
 }

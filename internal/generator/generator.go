@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"codedocs/internal/config"
@@ -91,7 +92,16 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 	}
 
 	if events != nil {
-		events <- ProgressEvent{Type: "log", Message: "🚀 Bắt đầu quét dự án..."}
+		events <- ProgressEvent{
+			Type:    "progress",
+			Message: "🔍 Scanning project directory & ignore rules...",
+			Data: map[string]any{
+				"percent": 3,
+				"current": 0,
+				"total":   0,
+				"speed":   0,
+			},
+		}
 	}
 
 	files, err := g.sc.ScanProjectFiles(cleanPath)
@@ -106,8 +116,14 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 
 	if events != nil {
 		events <- ProgressEvent{
-			Type:    "log",
-			Message: fmt.Sprintf("📦 Tìm thấy %d file. Đang xử lý... (Bỏ qua file > %dMB)", totalFiles, g.cfg.MaxFileSize/(1024*1024)),
+			Type:    "progress",
+			Message: fmt.Sprintf("📦 Found %d files. Preparing worker pool...", totalFiles),
+			Data: map[string]any{
+				"percent": 8,
+				"current": 0,
+				"total":   totalFiles,
+				"speed":   0,
+			},
 		}
 	}
 
@@ -177,6 +193,7 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 	}
 	close(jobsChan)
 
+	var processedCount int64
 	var wg sync.WaitGroup
 	workers := g.cfg.Workers
 	if workers < 1 {
@@ -196,6 +213,29 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 
 				res := g.processFile(j)
 				resultsChan <- res
+
+				// Real-time smooth atomic progress streaming!
+				count := atomic.AddInt64(&processedCount, 1)
+				if events != nil && (count <= 5 || count%5 == 0 || count == int64(totalFiles)) {
+					elapsedSec := time.Since(startTime).Seconds()
+					speed := float64(0)
+					if elapsedSec > 0 {
+						speed = math.Round(float64(count) / elapsedSec)
+					}
+					// Scale worker progress smoothly between 10% and 90%
+					pct := 10 + int((float64(count)/float64(totalFiles))*80)
+
+					events <- ProgressEvent{
+						Type:    "progress",
+						Message: fmt.Sprintf("Processing (%d/%d): %s", count, totalFiles, res.rel),
+						Data: map[string]any{
+							"percent": pct,
+							"current": count,
+							"total":   totalFiles,
+							"speed":   speed,
+						},
+					}
+				}
 			}
 		}()
 	}
@@ -230,27 +270,18 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 		if _, err := writer.Write(r.chunk); err != nil {
 			return nil, err
 		}
+	}
 
-		// Progress update
-		processed := i + 1
-		if events != nil && (processed <= 3 || processed%20 == 0 || processed == totalFiles) {
-			elapsedSec := time.Since(startTime).Seconds()
-			speed := float64(0)
-			if elapsedSec > 0 {
-				speed = math.Round(float64(processed) / elapsedSec)
-			}
-			percent := int((float64(processed) / float64(totalFiles)) * 100)
-
-			events <- ProgressEvent{
-				Type:    "progress",
-				Message: fmt.Sprintf("Reading: %s", r.rel),
-				Data: map[string]any{
-					"percent": percent,
-					"current": processed,
-					"total":   totalFiles,
-					"speed":   speed,
-				},
-			}
+	if events != nil {
+		events <- ProgressEvent{
+			Type:    "progress",
+			Message: "Writing final output file...",
+			Data: map[string]any{
+				"percent": 98,
+				"current": totalFiles,
+				"total":   totalFiles,
+				"speed":   float64(totalFiles) / math.Max(0.1, time.Since(startTime).Seconds()),
+			},
 		}
 	}
 
@@ -259,18 +290,24 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 	footer := "</project_codebase>\n\n"
 	tokenLabel := fmt.Sprintf("%d tokens (o200k_base, exact)", totalTokens)
 	if tokenMode != "exact" {
-		tokenLabel = fmt.Sprintf("~%d tokens (estimate)", totalTokens)
+		tokenLabel = fmt.Sprintf("~%d tokens (estimated)", totalTokens)
 	}
-	footer += fmt.Sprintf("<!-- Stats: %d files | %d lines of code | %s | Generated on %s in %.2fs -->", totalFiles, totalLines, tokenLabel, formattedLocalTime, elapsed)
-	_, _ = writer.WriteString(footer)
 
-	_ = writer.Flush()
-	_ = outFile.Close()
+	footer += fmt.Sprintf("<!-- SUMMARY: %d files, %d lines, %s, size: %d bytes, time: %.2fs -->\n",
+		totalFiles, totalLines, tokenLabel, writer.Buffered(), elapsed)
 
-	outInfo, err := os.Stat(outFilePath)
+	if _, err := writer.WriteString(footer); err != nil {
+		return nil, err
+	}
+
+	if err := writer.Flush(); err != nil {
+		return nil, fmt.Errorf("failed to flush writer: %w", err)
+	}
+
+	fileInfo, err := outFile.Stat()
 	sizeBytes := int64(0)
 	if err == nil {
-		sizeBytes = outInfo.Size()
+		sizeBytes = fileInfo.Size()
 	}
 
 	res := &GenerateResult{
@@ -291,14 +328,14 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 			Type:    "complete",
 			Message: fileName,
 			Data: map[string]any{
-				"total":        totalFiles,
-				"lines":        totalLines,
-				"tokens":       totalTokens,
-				"token_mode":   tokenMode,
-				"elapsed":      elapsed,
-				"size":         sizeBytes,
-				"mode":         mode,
-				"generated_at": formattedLocalTime,
+				"total":        res.TotalFiles,
+				"lines":        res.TotalLines,
+				"tokens":       res.TotalTokens,
+				"token_mode":   res.TokenMode,
+				"size":         res.SizeBytes,
+				"elapsed":      res.Elapsed,
+				"file_name":    res.FileName,
+				"generated_at": res.GeneratedAt,
 			},
 		}
 	}
@@ -307,48 +344,35 @@ func (g *Generator) Generate(ctx context.Context, projectPath string, mode strin
 }
 
 func (g *Generator) processFile(j job) result {
+	if g.sc.IsBinary(filepath.Ext(j.path)) {
+		var buf bytes.Buffer
+		buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n[BINARY/MEDIA FILE - CONTENT EXCLUDED]\n</file>\n\n", j.rel))
+		return result{
+			index:  j.index,
+			rel:    j.rel,
+			chunk:  buf.Bytes(),
+			lines:  1,
+			tokens: 0,
+		}
+	}
+
+	data, err := os.ReadFile(j.path)
+	if err != nil || len(data) == 0 {
+		return result{index: j.index, rel: j.rel}
+	}
+
+	lines := int64(bytes.Count(data, []byte("\n"))) + 1
+	tokens := int64(g.tok.CountTokens(string(data)))
+
 	var buf bytes.Buffer
-	buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n", j.rel))
+	buf.Grow(len(data) + 128)
 
-	ext := filepath.Ext(j.path)
-	if g.sc.IsBinary(ext) {
-		buf.WriteString("    <!-- [BINARY/MEDIA FILE - CONTENT EXCLUDED] -->\n</file>\n\n")
-		return result{index: j.index, rel: j.rel, chunk: buf.Bytes(), lines: 0, tokens: 0}
+	buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n<![CDATA[\n", j.rel))
+	buf.Write(data)
+	if !bytes.HasSuffix(data, []byte("\n")) {
+		buf.WriteByte('\n')
 	}
-
-	info, err := os.Stat(j.path)
-	if err != nil || info.Size() < 0 {
-		buf.WriteString("    <!-- [ERROR READING FILE] -->\n</file>\n\n")
-		return result{index: j.index, rel: j.rel, chunk: buf.Bytes(), lines: 0, tokens: 0}
-	}
-
-	if info.Size() == 0 {
-		buf.WriteString("    <!-- [EMPTY FILE] -->\n</file>\n\n")
-		return result{index: j.index, rel: j.rel, chunk: buf.Bytes(), lines: 0, tokens: 0}
-	}
-
-	if g.cfg.MaxFileSize > 0 && info.Size() > g.cfg.MaxFileSize {
-		mb := info.Size() / (1024 * 1024)
-		buf.WriteString(fmt.Sprintf("    <!-- [FILE TOO LARGE (%dMB) - CONTENT EXCLUDED] -->\n</file>\n\n", mb))
-		return result{index: j.index, rel: j.rel, chunk: buf.Bytes(), lines: 0, tokens: 0}
-	}
-
-	contentBytes, err := os.ReadFile(j.path)
-	if err != nil {
-		buf.WriteString("    <!-- [ERROR READING FILE] -->\n</file>\n\n")
-		return result{index: j.index, rel: j.rel, chunk: buf.Bytes(), lines: 0, tokens: 0}
-	}
-
-	content := string(contentBytes)
-	lines := int64(bytes.Count(contentBytes, []byte("\n")) + 1)
-	tokens := int64(g.tok.CountTokens(content))
-
-	sanitized := SanitizeContent(content)
-	escaped := EscapeCDATA(sanitized)
-
-	buf.WriteString("<![CDATA[\n")
-	buf.WriteString(escaped)
-	buf.WriteString("\n]]>\n</file>\n\n")
+	buf.WriteString("]]>\n</file>\n\n")
 
 	return result{
 		index:  j.index,
