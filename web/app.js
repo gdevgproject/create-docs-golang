@@ -50,6 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let isFullRendered = false;
   let cachedUpdateInfo = null;
   let progressPollTimer = null;
+  let updateState = 'idle'; // 'idle', 'downloading', 'ready'
+  let targetVerStr = '';
 
   // Initialize
   loadVersion();
@@ -67,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnCopyModal.addEventListener('click', copyModalContent);
   dom.btnCloseModal.addEventListener('click', closeModal);
   dom.btnRenderAll.addEventListener('click', renderRemainingTextAsync);
-  if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', openUpdateModal);
+  if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', handleUpdateButtonClick);
 
   window.addEventListener('click', (e) => {
     if (e.target === dom.modal) closeModal();
@@ -214,14 +216,16 @@ document.addEventListener('DOMContentLoaded', () => {
     tcInput.focus();
   }
 
-  // ── HIGH-UX VERSION & UPDATES ──
+  // ── SEAMLESS IN-PLACE BUTTON UPDATES ──
   async function loadVersion() {
     try {
       const res = await fetch('api/version');
       const data = await res.json();
       if (data.version) {
-        if (dom.appVersion) dom.appVersion.textContent = data.version;
-        if (dom.verInfo) dom.verInfo.textContent = `codedocs ${data.version}`;
+        let v = data.version;
+        if (!v.startsWith('v')) v = 'v' + v;
+        if (dom.appVersion) dom.appVersion.textContent = v;
+        if (dom.verInfo) dom.verInfo.textContent = `codedocs ${v}`;
       }
     } catch {
       // ignore
@@ -236,9 +240,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (info.has_update) {
         cachedUpdateInfo = info;
+        let ver = info.latest_version || '';
+        if (ver.startsWith('v')) ver = ver.substring(1);
+        targetVerStr = 'v' + ver;
+
         if (dom.btnCheckUpdate) {
-          dom.btnCheckUpdate.textContent = `✨ Update v${info.latest_version}`;
+          dom.btnCheckUpdate.textContent = `✨ Update ${targetVerStr}`;
+          dom.btnCheckUpdate.className = 'btn-update-badge';
           dom.btnCheckUpdate.style.display = 'inline-block';
+          updateState = 'idle';
         }
       } else {
         if (dom.btnCheckUpdate) dom.btnCheckUpdate.style.display = 'none';
@@ -248,50 +258,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function openUpdateModal() {
-    if (!cachedUpdateInfo) return;
-    const info = cachedUpdateInfo;
-
-    dom.modalTitle.textContent = `✨ Update Available: ${info.latest_version}`;
-    dom.btnCopyModal.style.display = 'none';
-
-    const notes = escHtml(info.release_notes || 'A new version of CodeDocs is available on GitHub.');
-    dom.modalContent.innerHTML = `
-      <div class="ex-section">
-        <div class="ex-title">Version Comparison</div>
-        <p>Current: <strong>${info.current_version}</strong> ➔ Latest: <strong style="color:var(--accent-emerald)">${info.latest_version}</strong></p>
-      </div>
-      <div class="ex-section">
-        <div class="ex-title">Release Notes</div>
-        <div style="background:var(--surface-card); padding:12px; border-radius:4px; border:1px solid var(--border); white-space:pre-wrap;">${notes}</div>
-      </div>
-      <div id="update-action-box" style="margin-top:16px;">
-        <button class="action-btn primary" id="btn-start-download">⬇ Download Update (Background)</button>
-      </div>
-      <div id="update-progress-box" class="update-progress-container" style="display:none;">
-        <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
-          <span id="upd-status-text">Downloading update...</span>
-          <span id="upd-pct-text" style="font-weight:700; color:var(--primary);">0%</span>
-        </div>
-        <div class="update-progress-bar">
-          <div class="update-progress-fill" id="upd-progress-fill"></div>
-        </div>
-      </div>
-    `;
-
-    dom.modal.style.display = 'flex';
-
-    const startDownloadBtn = document.getElementById('btn-start-download');
-    if (startDownloadBtn) {
-      startDownloadBtn.addEventListener('click', () => startBackgroundDownload(info.download_url));
+  function handleUpdateButtonClick() {
+    if (updateState === 'idle') {
+      if (cachedUpdateInfo && cachedUpdateInfo.download_url) {
+        startInPlaceDownload(cachedUpdateInfo.download_url);
+      }
+    } else if (updateState === 'ready') {
+      applyUpdate();
     }
   }
 
-  async function startBackgroundDownload(downloadUrl) {
-    const actionBox = document.getElementById('update-action-box');
-    const progressBox = document.getElementById('update-progress-box');
-    if (actionBox) actionBox.style.display = 'none';
-    if (progressBox) progressBox.style.display = 'block';
+  async function startInPlaceDownload(downloadUrl) {
+    updateState = 'downloading';
+    if (dom.btnCheckUpdate) {
+      dom.btnCheckUpdate.className = 'btn-update-badge downloading';
+      dom.btnCheckUpdate.innerHTML = `<span class="spin-ring"></span> 0%`;
+    }
 
     try {
       await fetch('api/download-update', {
@@ -301,49 +283,44 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (progressPollTimer) clearInterval(progressPollTimer);
-      progressPollTimer = setInterval(pollUpdateProgress, 500);
-      showToast('⬇ Downloading update in background... You can keep using the app!');
+      progressPollTimer = setInterval(pollInPlaceProgress, 400);
+      showToast(`⬇ Downloading update ${targetVerStr} in background...`);
     } catch {
       showToast('❌ Failed to start update download');
+      updateState = 'idle';
+      if (dom.btnCheckUpdate) {
+        dom.btnCheckUpdate.className = 'btn-update-badge';
+        dom.btnCheckUpdate.textContent = `✨ Update ${targetVerStr}`;
+      }
     }
   }
 
-  async function pollUpdateProgress() {
+  async function pollInPlaceProgress() {
     try {
       const res = await fetch('api/update-progress');
       const p = await res.json();
 
-      const fill = document.getElementById('upd-progress-fill');
-      const pctText = document.getElementById('upd-pct-text');
-      const statusText = document.getElementById('upd-status-text');
-
-      if (fill) fill.style.width = p.percent + '%';
-      if (pctText) pctText.textContent = p.percent + '%';
-
       if (p.state === 'downloading') {
-        if (statusText) {
-          statusText.textContent = `Downloading: ${formatBytes(p.downloaded_bytes)} / ${formatBytes(p.total_bytes)}`;
+        if (dom.btnCheckUpdate) {
+          dom.btnCheckUpdate.innerHTML = `<span class="spin-ring"></span> ${p.percent}%`;
         }
       } else if (p.state === 'ready') {
         if (progressPollTimer) clearInterval(progressPollTimer);
-        if (statusText) statusText.textContent = '✅ Update downloaded & verified!';
-        if (pctText) pctText.textContent = '100%';
+        updateState = 'ready';
 
-        const actionBox = document.getElementById('update-action-box');
-        if (actionBox) {
-          actionBox.innerHTML = `<button class="action-btn primary" id="btn-apply-update" style="background:var(--accent-emerald);">🚀 Restart App to Apply Update</button>`;
-          actionBox.style.display = 'block';
-
-          const applyBtn = document.getElementById('btn-apply-update');
-          if (applyBtn) {
-            applyBtn.addEventListener('click', applyUpdate);
-          }
+        if (dom.btnCheckUpdate) {
+          dom.btnCheckUpdate.className = 'btn-update-badge restart-ready';
+          dom.btnCheckUpdate.textContent = `🚀 Restart ${targetVerStr}`;
         }
-        showToast('✅ Update is ready! Click Restart to apply.');
+        showToast(`✅ Update ${targetVerStr} downloaded! Click button to restart.`);
       } else if (p.state === 'error') {
         if (progressPollTimer) clearInterval(progressPollTimer);
-        if (statusText) statusText.textContent = '❌ Download error: ' + (p.error || 'Unknown error');
-        showToast('❌ Error downloading update');
+        updateState = 'idle';
+        if (dom.btnCheckUpdate) {
+          dom.btnCheckUpdate.className = 'btn-update-badge';
+          dom.btnCheckUpdate.textContent = `✨ Update ${targetVerStr}`;
+        }
+        showToast('❌ Download error: ' + (p.error || 'Failed'));
       }
     } catch {
       // ignore
@@ -351,15 +328,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function applyUpdate() {
-    const applyBtn = document.getElementById('btn-apply-update');
-    if (applyBtn) {
-      applyBtn.disabled = true;
-      applyBtn.textContent = '⏳ Restarting application...';
+    if (dom.btnCheckUpdate) {
+      dom.btnCheckUpdate.disabled = true;
+      dom.btnCheckUpdate.textContent = '⏳ Restarting...';
     }
 
     try {
       await fetch('api/apply-update', { method: 'POST' });
-      showToast('🚀 Restarting application to apply update...');
+      showToast(`🚀 Restarting application to apply ${targetVerStr}...`);
       setTimeout(() => {
         location.reload();
       }, 1500);

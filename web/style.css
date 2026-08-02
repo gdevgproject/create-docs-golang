@@ -749,3 +749,31 @@ textarea.code-editor {
   width: 0%;
   transition: width 0.2s ease;
 }
+
+.btn-update-badge.downloading {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  animation: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-update-badge.restart-ready {
+  background: linear-gradient(135deg, #10b981, #047857);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.7);
+  animation: updatePulse 1.5s infinite;
+}
+
+.spin-ring {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
