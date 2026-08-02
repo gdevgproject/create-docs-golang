@@ -1,0 +1,16 @@
+# Binaries & Executables
+*.exe
+codedocs
+dist/
+
+# Output & Cache Files
+temp_docs/
+.o200k_base.tiktoken
+.o200k_fail
+saved_paths.json
+
+# IDE & OS Metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

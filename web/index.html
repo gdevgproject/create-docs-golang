@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codebase-to-Docs Generator (Go Edition)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="brand-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+      </svg>
+      <div class="brand-text">
+        <span class="brand-title">CodeDocs</span>
+        <span class="brand-badge">GO 1.26</span>
+      </div>
+    </div>
+
+    <div class="input-group">
+      <label class="input-label" for="path-input">Project Path</label>
+      <input type="text" id="path-input" class="input-control" placeholder="e.g. D:/projects/my-app or /var/www/project">
+    </div>
+
+    <div class="mode-selector" id="mode-selector">
+      <label class="mode-btn">
+        <input type="radio" name="gen-mode" value="full">
+        <span>📄 Full Content</span>
+      </label>
+      <label class="mode-btn">
+        <input type="radio" name="gen-mode" value="stats" checked>
+        <span>📊 Stats Only</span>
+      </label>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="btn-struct">🌳 Structure</button>
+      <button class="btn btn-primary" id="btn-gen">⚡ Generate</button>
+    </div>
+
+    <button class="btn btn-ghost btn-block" id="btn-exclusions">🚫 Ignored List</button>
+
+    <hr class="divider">
+
+    <div class="bm-header">
+      <label class="input-label">Saved Bookmarks</label>
+      <span class="bm-count" id="bm-count">0</span>
+    </div>
+
+    <div class="bm-add-row">
+      <input type="text" id="bm-note" class="input-control" placeholder="Project label...">
+      <button class="btn btn-secondary btn-icon" id="btn-add-bm" title="Save current path">＋</button>
+    </div>
+
+    <div class="bookmarks-area" id="bm-list">
+      <div class="bm-empty">No bookmarks saved yet</div>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN CONTENT ══ -->
+  <main class="main">
+    <div class="preview-container">
+      <header class="preview-header">
+        <div class="preview-left">
+          <span class="preview-title">DOCUMENT PREVIEW</span>
+          <span class="status-badge badge-idle" id="file-badge">Ready</span>
+          
+          <div class="stats-cards" id="stats-cards" style="display:none;">
+            <div class="stat-card">
+              <span class="stat-lbl">FILES</span>
+              <span class="stat-val" id="stat-files">–</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-lbl">LINES</span>
+              <span class="stat-val" id="stat-lines">–</span>
+            </div>
+            <div class="stat-card" id="card-tokens">
+              <span class="stat-lbl">TOKENS</span>
+              <span class="stat-val" id="stat-tokens">–</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-lbl">SIZE</span>
+              <span class="stat-val" id="stat-size">–</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-lbl">TIME</span>
+              <span class="stat-val" id="stat-time">–</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="action-btn ghost" id="btn-load" style="display:none">📄 Load Content</button>
+          <button class="action-btn ghost" id="btn-copy" disabled>📋 Copy Docs</button>
+          <a href="#" id="btn-download" class="action-btn primary" disabled>⬇ Download .md</a>
+        </div>
+      </header>
+
+      <div class="editor-wrapper">
+        <textarea id="editor" class="code-editor" readonly placeholder="Documentation XML output will appear here after clicking Generate..."></textarea>
+
+        <!-- PROGRESS OVERLAY -->
+        <div class="overlay-status" id="status-panel">
+          <div class="overlay-top">
+            <div class="overlay-title">
+              <span class="pulse-dot"></span>
+              <span>Generating Codebase Docs...</span>
+            </div>
+            <div class="overlay-meta">
+              <span class="overlay-speed" id="speed-text">0 files/s</span>
+              <span class="overlay-pct" id="percent-text">0%</span>
+            </div>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="log-text" id="log-text">Initializing scanner...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast" id="toast"></div>
+
+  <!-- MODAL DIALOG -->
+  <div class="modal" id="modal-dialog">
+    <div class="modal-box">
+      <header class="modal-head">
+        <span id="modal-title">Modal Title</span>
+        <div class="modal-actions">
+          <button class="action-btn ghost" id="btn-copy-modal">📋 Copy</button>
+          <button class="action-btn ghost" id="btn-close-modal">✕ Close</button>
+        </div>
+      </header>
+      <div class="modal-body" id="modal-content"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+package api
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"codedocs/internal/config"
+)
+
+func TestAPI_GetExclusions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	server := NewServer(cfg, nil)
+
+	req := httptest.NewRequest("GET", "/api/exclusions", nil)
+	w := httptest.NewRecorder()
+
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+
+	var res map[string][]string
+	if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+		t.Fatalf("failed to decode JSON: %v", err)
+	}
+
+	if len(res["dirs"]) == 0 || len(res["files"]) == 0 || len(res["extensions"]) == 0 {
+		t.Errorf("exclusions response missing expected arrays: %v", res)
+	}
+}
+
+func TestAPI_BookmarksFlow(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.BookmarkFile = filepath.Join(t.TempDir(), "bookmarks.json")
+
+	server := NewServer(cfg, nil)
+
+	// Save Bookmark
+	body, _ := json.Marshal(map[string]string{
+		"path": "/test/path",
+		"note": "Test Project",
+	})
+	req := httptest.NewRequest("POST", "/api/bookmarks", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("save bookmark failed: status %d", w.Code)
+	}
+
+	var saveRes struct {
+		Status string `json:"status"`
+		Data   map[string]struct {
+			ID   string `json:"id"`
+			Path string `json:"path"`
+			Note string `json:"note"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&saveRes)
+
+	if saveRes.Status != "success" || len(saveRes.Data) != 1 {
+		t.Fatalf("expected 1 bookmark saved, got: %v", saveRes)
+	}
+
+	var savedID string
+	for id := range saveRes.Data {
+		savedID = id
+	}
+
+	// Delete Bookmark
+	delBody, _ := json.Marshal(map[string]string{"id": savedID})
+	delReq := httptest.NewRequest("DELETE", "/api/bookmarks", bytes.NewBuffer(delBody))
+	delW := httptest.NewRecorder()
+	server.ServeHTTP(w, delReq)
+
+	if delW.Code != http.StatusOK {
+		t.Fatalf("delete bookmark failed: status %d", delW.Code)
+	}
+}
+
+func TestAPI_Structure(t *testing.T) {
+	tempDir := t.TempDir()
+	os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\n"), 0644)
+
+	cfg := config.DefaultConfig()
+	server := NewServer(cfg, nil)
+
+	req := httptest.NewRequest("GET", "/api/structure?path="+tempDir, nil)
+	w := httptest.NewRecorder()
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("structure query failed: status %d", w.Code)
+	}
+
+	var res struct {
+		Status string `json:"status"`
+		Data   string `json:"data"`
+		Count  int    `json:"count"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&res)
+
+	if res.Status != "success" || res.Count != 1 || !strings.Contains(res.Data, "main.go") {
+		t.Errorf("unexpected structure response: %v", res)
+	}
+}
