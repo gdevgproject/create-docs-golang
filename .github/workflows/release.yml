@@ -2,6 +2,8 @@ name: Release Automation
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -10,8 +12,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build and Create Release
+  build:
+    name: Build and Test
     runs-on: ubuntu-latest
 
     steps:
@@ -24,38 +26,45 @@ jobs:
           go-version: '1.24'
           cache: true
 
-      - name: Extract Tag Name
-        id: get_version
+      - name: Run Tests
+        run: go test -v ./...
+
+      - name: Determine Version Tag
+        id: vars
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          if [ "$VERSION" = "refs/heads/main" ] || [ -z "$VERSION" ]; then
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
             VERSION="v1.0.0"
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "IS_TAG=${GITHUB_REF_TYPE}" >> $GITHUB_OUTPUT
 
       - name: Build Cross-Platform Binaries
         run: |
           mkdir -p dist
+          VERSION="${{ steps.vars.outputs.VERSION }}"
           
           # Windows x64
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_windows_amd64.exe ./cmd/codedocs
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${VERSION}" -o dist/codedocs_windows_amd64.exe ./cmd/codedocs
           
           # Windows ARM64
-          GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_windows_arm64.exe ./cmd/codedocs
+          GOOS=windows GOARCH=arm64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${VERSION}" -o dist/codedocs_windows_arm64.exe ./cmd/codedocs
           
           # macOS Apple Silicon
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_darwin_arm64 ./cmd/codedocs
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${VERSION}" -o dist/codedocs_darwin_arm64 ./cmd/codedocs
           
           # Linux x64
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${{ env.VERSION }}" -o dist/codedocs_linux_amd64 ./cmd/codedocs
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X codedocs/internal/config.Version=${VERSION}" -o dist/codedocs_linux_amd64 ./cmd/codedocs
 
-      - name: Create GitHub Release and Upload Assets
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION }}
-          name: Release ${{ env.VERSION }}
+          tag_name: ${{ steps.vars.outputs.VERSION }}
+          name: Release ${{ steps.vars.outputs.VERSION }}
           body: |
-            ## 🚀 Codebase-to-Docs Generator (${{ env.VERSION }})
+            ## 🚀 Codebase-to-Docs Generator (${{ steps.vars.outputs.VERSION }})
             
             Standalone binaries built automatically via GitHub Actions.
             
