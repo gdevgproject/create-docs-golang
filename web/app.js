@@ -37,6 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
     virtualBanner: document.getElementById('virtual-banner'),
     vBannerText: document.getElementById('v-banner-text'),
     btnRenderAll: document.getElementById('btn-render-all'),
+    appVersion: document.getElementById('app-version'),
+    verInfo: document.getElementById('ver-info'),
+    btnCheckUpdate: document.getElementById('btn-check-update'),
   };
 
   let toastTimer = null;
@@ -45,7 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let contentLoaded = false;
   let isFullRendered = false;
 
-  // Initialize Bookmarks
+  // Initialize
+  loadVersion();
   loadBookmarks();
 
   // Event Listeners
@@ -58,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnCopyModal.addEventListener('click', copyModalContent);
   dom.btnCloseModal.addEventListener('click', closeModal);
   dom.btnRenderAll.addEventListener('click', renderRemainingTextAsync);
+  if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', checkUpdate);
 
   window.addEventListener('click', (e) => {
     if (e.target === dom.modal) closeModal();
@@ -91,6 +96,96 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  // ── VERSION & UPDATES ──
+  async function loadVersion() {
+    try {
+      const res = await fetch('api/version');
+      const data = await res.json();
+      if (data.version) {
+        if (dom.appVersion) dom.appVersion.textContent = data.version;
+        if (dom.verInfo) dom.verInfo.textContent = `codedocs ${data.version}`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function checkUpdate() {
+    if (dom.btnCheckUpdate) {
+      dom.btnCheckUpdate.disabled = true;
+      dom.btnCheckUpdate.textContent = '⏳ Checking...';
+    }
+
+    try {
+      const res = await fetch('api/check-update');
+      const info = await res.json();
+
+      if (info.has_update) {
+        dom.modalTitle.textContent = `🎉 Update Available: ${info.latest_version}`;
+        dom.btnCopyModal.style.display = 'none';
+
+        const notes = escHtml(info.release_notes || 'A new version of CodeDocs is available on GitHub.');
+        dom.modalContent.innerHTML = `
+          <div class="ex-section">
+            <div class="ex-title">Version Status</div>
+            <p>Current: <strong>${info.current_version}</strong> ➔ Latest: <strong style="color:var(--accent-emerald)">${info.latest_version}</strong></p>
+          </div>
+          <div class="ex-section">
+            <div class="ex-title">Release Notes</div>
+            <div style="background:var(--surface-card); padding:12px; border-radius:4px; border:1px solid var(--border);">${notes}</div>
+          </div>
+          <div style="margin-top:16px;">
+            <button class="action-btn primary" id="btn-apply-update">🚀 Download & Apply Update Now</button>
+          </div>
+        `;
+
+        dom.modal.style.display = 'flex';
+
+        const applyBtn = document.getElementById('btn-apply-update');
+        if (applyBtn) {
+          applyBtn.addEventListener('click', () => applyUpdate(info.download_url));
+        }
+      } else {
+        showToast(`✅ You are on the latest version (${info.current_version})`);
+      }
+    } catch {
+      showToast('❌ Error checking GitHub for updates');
+    } finally {
+      if (dom.btnCheckUpdate) {
+        dom.btnCheckUpdate.disabled = false;
+        dom.btnCheckUpdate.textContent = '🔄 Update';
+      }
+    }
+  }
+
+  async function applyUpdate(downloadUrl) {
+    const applyBtn = document.getElementById('btn-apply-update');
+    if (applyBtn) {
+      applyBtn.disabled = true;
+      applyBtn.textContent = '⏳ Downloading & Installing Update...';
+    }
+
+    try {
+      const res = await fetch('api/apply-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ download_url: downloadUrl }),
+      });
+
+      if (res.ok) {
+        showToast('🚀 Update applied! Restarting application...');
+        setTimeout(() => {
+          location.reload();
+        }, 3000);
+      } else {
+        showToast('❌ Failed to apply update');
+      }
+    } catch {
+      showToast('🚀 Update triggered. Reloading page...');
+      setTimeout(() => location.reload(), 3000);
+    }
   }
 
   // ── BOOKMARKS ──
@@ -354,7 +449,6 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.editor.value = text;
         isFullRendered = true;
       } else {
-        // High-Performance Virtual Preview: Render initial 300KB slice immediately (0ms UI lag)
         const initialSlice = text.slice(0, PREVIEW_LIMIT);
         dom.editor.value = initialSlice + `\n\n... [⚡ FAST PREVIEW MODE: Showing initial 300 KB of ${formatBytes(text.length)}. Click "Load All Lines" above to render remaining content] ...`;
         
@@ -403,7 +497,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const pct = Math.round((offset / totalLength) * 100);
       dom.vBannerText.textContent = `⚡ Rendering Full Text: ${pct}% (${formatBytes(offset)} / ${formatBytes(totalLength)})...`;
 
-      // Non-blocking UI frame dispatch
       requestAnimationFrame(() => {
         setTimeout(step, 0);
       });
@@ -439,7 +532,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!textToCopy) return;
 
     try {
-      // Zero-DOM Copying: Copies directly from memory buffer, 0ms UI lag!
       await navigator.clipboard.writeText(textToCopy);
       showToast(`✅ Copied full docs (${formatBytes(textToCopy.length)}) to clipboard!`);
     } catch {

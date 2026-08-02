@@ -8,10 +8,16 @@ import (
 	"strings"
 )
 
+var (
+	// Version can be set at build time via -ldflags "-X codedocs/internal/config.Version=v1.0.0"
+	Version    = "v1.0.0"
+	GitHubRepo = "gdevgproject/create-docs-golang"
+)
+
 const (
 	O200KVocabURL    = "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
 	O200KVocabSHA256 = "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"
-	O200KPattern     = `(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+`
+	O200KPattern     = `(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+`
 )
 
 var ExcludedDirs = []string{
@@ -61,6 +67,7 @@ var BinaryExtensions = []string{
 
 // Config holds runtime configuration settings
 type Config struct {
+	Version      string
 	Port         int
 	Host         string
 	BasePath     string // Custom URL prefix, e.g. "/codedocs" -> http://localhost:8080/codedocs
@@ -69,9 +76,10 @@ type Config struct {
 	TempDir      string
 	CacheDir     string
 	BookmarkFile string
+	OpenBrowser  bool
 }
 
-// CleanBasePath normalizes base path to start with / and end without /
+// NormalizeBasePath normalizes base path to start with / and end without /
 func NormalizeBasePath(p string) string {
 	p = strings.TrimSpace(p)
 	if p == "" || p == "/" {
@@ -103,6 +111,7 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
+		Version:      Version,
 		Port:         8080,
 		Host:         "0.0.0.0",
 		BasePath:     "",
@@ -111,6 +120,7 @@ func DefaultConfig() *Config {
 		TempDir:      "./temp_docs",
 		CacheDir:     cacheDir,
 		BookmarkFile: bookmarkFile,
+		OpenBrowser:  true,
 	}
 }
 
@@ -126,6 +136,7 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.TempDir, "temp-dir", cfg.TempDir, "Directory to store generated documentation files")
 	flag.StringVar(&cfg.CacheDir, "cache-dir", cfg.CacheDir, "Directory to cache tokenizer vocabulary")
 	flag.StringVar(&cfg.BookmarkFile, "bookmark-file", cfg.BookmarkFile, "Path to bookmarks JSON file")
+	flag.BoolVar(&cfg.OpenBrowser, "open-browser", cfg.OpenBrowser, "Automatically open default browser on launch")
 
 	flag.Parse()
 	cfg.BasePath = NormalizeBasePath(cfg.BasePath)

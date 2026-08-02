@@ -14,6 +14,7 @@ import (
 	"codedocs/internal/config"
 	"codedocs/internal/generator"
 	"codedocs/internal/scanner"
+	"codedocs/internal/updater"
 )
 
 func (s *Server) handleGetBookmarks(w http.ResponseWriter, r *http.Request) {
@@ -244,4 +245,46 @@ func formatInt(n int64) string {
 		out = append(out, byte(c))
 	}
 	return string(out)
+}
+
+func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, map[string]string{
+		"version":     s.cfg.Version,
+		"github_repo": config.GitHubRepo,
+	})
+}
+
+func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
+	info, err := updater.CheckUpdate(s.cfg.Version)
+	if err != nil {
+		s.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.jsonResponse(w, info)
+}
+
+func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		DownloadURL string `json:"download_url"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.jsonError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if body.DownloadURL == "" {
+		s.jsonError(w, "Download URL is required", http.StatusBadRequest)
+		return
+	}
+
+	s.jsonResponse(w, map[string]string{
+		"status":  "success",
+		"message": "Applying update and restarting application...",
+	})
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_ = updater.ApplyUpdate(body.DownloadURL)
+	}()
 }
