@@ -42,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     appVersion: document.getElementById('app-version'),
     verInfo: document.getElementById('ver-info'),
     btnCheckUpdate: document.getElementById('btn-check-update'),
+    btnManualCheck: document.getElementById('btn-manual-check'),
   };
 
   let toastTimer = null;
@@ -61,9 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadBookmarks();
   silentCheckUpdate(false);
 
-  // Periodically check GitHub for new releases every 3 minutes
-  setInterval(() => silentCheckUpdate(false), 3 * 60 * 1000);
-
   // Event Listeners
   dom.btnAddBm.addEventListener('click', addBookmark);
   dom.btnStruct.addEventListener('click', getStructure);
@@ -77,8 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnRenderAll.addEventListener('click', renderRemainingTextAsync);
   if (dom.btnStopRender) dom.btnStopRender.addEventListener('click', stopRendering);
   if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', handleUpdateButtonClick);
-  if (dom.verInfo) dom.verInfo.addEventListener('click', () => silentCheckUpdate(true));
-  if (dom.appVersion) dom.appVersion.addEventListener('click', () => silentCheckUpdate(true));
+  if (dom.btnManualCheck) dom.btnManualCheck.addEventListener('click', () => silentCheckUpdate(true));
 
   window.addEventListener('click', (e) => {
     if (e.target === dom.modal) closeModal();
@@ -241,9 +238,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Check update with GitHub API cache buster & periodic background polling
+  // Check update with GitHub API cache buster & user-controlled manual trigger
   async function silentCheckUpdate(manual = false) {
-    if (manual) showToast('🔍 Checking GitHub for updates...');
+    if (manual) {
+      if (dom.btnManualCheck) {
+        dom.btnManualCheck.disabled = true;
+        dom.btnManualCheck.textContent = '⏳ Checking...';
+      }
+      showToast('🔍 Checking GitHub for updates...');
+    }
 
     try {
       const res = await fetch(`api/check-update?t=${Date.now()}`);
@@ -255,6 +258,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ver.startsWith('v')) ver = ver.substring(1);
         targetVerStr = 'v' + ver;
 
+        if (dom.btnManualCheck) dom.btnManualCheck.style.display = 'none';
+
         if (dom.btnCheckUpdate) {
           dom.btnCheckUpdate.textContent = `✨ Update ${targetVerStr}`;
           dom.btnCheckUpdate.className = 'btn-update-badge';
@@ -264,9 +269,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (manual) showToast(`✨ Update available: ${targetVerStr}`);
       } else {
         if (dom.btnCheckUpdate) dom.btnCheckUpdate.style.display = 'none';
+        if (dom.btnManualCheck) {
+          dom.btnManualCheck.style.display = 'inline-block';
+          dom.btnManualCheck.disabled = false;
+          dom.btnManualCheck.textContent = '🔄 Check Update';
+        }
         if (manual) showToast(`✅ You are on the latest version (${info.current_version})`);
       }
     } catch {
+      if (dom.btnManualCheck) {
+        dom.btnManualCheck.disabled = false;
+        dom.btnManualCheck.textContent = '🔄 Check Update';
+      }
       if (manual) showToast('❌ Unable to check GitHub updates');
     }
   }
