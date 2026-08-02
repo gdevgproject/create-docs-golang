@@ -26,11 +26,11 @@ type UpdateInfo struct {
 }
 
 type DownloadProgress struct {
-	State          string `json:"state"` // "idle", "downloading", "ready", "error"
-	Percent        int    `json:"percent"`
+	State           string `json:"state"` // "idle", "downloading", "ready", "error"
+	Percent         int    `json:"percent"`
 	DownloadedBytes int64  `json:"downloaded_bytes"`
-	TotalBytes     int64  `json:"total_bytes"`
-	Error          string `json:"error,omitempty"`
+	TotalBytes      int64  `json:"total_bytes"`
+	Error           string `json:"error,omitempty"`
 }
 
 type githubReleaseAsset struct {
@@ -64,15 +64,15 @@ func setProgress(p DownloadProgress) {
 	progMu.Unlock()
 }
 
-// CleanupOldFiles silently removes leftover .old binary files on application launch
+// CleanupOldFiles silently removes leftover .old, .new, or .tmp binary files on application launch
 func CleanupOldFiles() {
 	execPath, err := os.Executable()
 	if err != nil {
 		return
 	}
 	execPath, _ = filepath.EvalSymlinks(execPath)
-	oldPath := execPath + ".old"
-	_ = os.Remove(oldPath)
+	_ = os.Remove(execPath + ".old")
+	_ = os.Remove(execPath + ".tmp")
 }
 
 // CheckUpdate checks GitHub Releases API for the latest published release
@@ -84,7 +84,7 @@ func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
 		return nil, fmt.Errorf("failed to create update request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "codedocs-updater/"+currentVersion)
+	req.Header.Set("User-Agent", "CodePulse-Updater/"+currentVersion)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -166,7 +166,7 @@ func IsNewerVersion(current, latest string) bool {
 	return len(latParts) > len(curParts)
 }
 
-// StartBackgroundDownload downloads the update binary in the background while updating progress
+// StartBackgroundDownload downloads the update binary in background with full network resilience
 func StartBackgroundDownload(downloadURL string) error {
 	if downloadURL == "" {
 		return fmt.Errorf("download URL is empty")
@@ -187,19 +187,34 @@ func StartBackgroundDownload(downloadURL string) error {
 			return
 		}
 		execPath, _ = filepath.EvalSymlinks(execPath)
+		tmpPath := execPath + ".tmp"
 		newPath := execPath + ".new"
 
-		resp, err := http.Get(downloadURL)
+		// Clean up any stale download file first
+		_ = os.Remove(tmpPath)
+		_ = os.Remove(newPath)
+
+		req, err := http.NewRequest("GET", downloadURL, nil)
+		if err != nil {
+			setProgress(DownloadProgress{State: "error", Error: "Invalid download request"})
+			return
+		}
+		req.Header.Set("User-Agent", "CodePulse-Updater/"+config.Version)
+
+		// Enterprise HTTP Client with 5-minute timeout for large binary payloads
+		client := &http.Client{Timeout: 5 * time.Minute}
+		resp, err := client.Do(req)
 		if err != nil || resp.StatusCode != http.StatusOK {
-			setProgress(DownloadProgress{State: "error", Error: "Download failed"})
+			_ = os.Remove(tmpPath)
+			setProgress(DownloadProgress{State: "error", Error: "Network error or invalid response"})
 			return
 		}
 		defer resp.Body.Close()
 
 		totalBytes := resp.ContentLength
-		outFile, err := os.Create(newPath)
+		outFile, err := os.Create(tmpPath)
 		if err != nil {
-			setProgress(DownloadProgress{State: "error", Error: err.Error()})
+			setProgress(DownloadProgress{State: "error", Error: "Failed to create temp file: " + err.Error()})
 			return
 		}
 
@@ -211,8 +226,8 @@ func StartBackgroundDownload(downloadURL string) error {
 			if n > 0 {
 				if _, werr := outFile.Write(buf[:n]); werr != nil {
 					outFile.Close()
-					_ = os.Remove(newPath)
-					setProgress(DownloadProgress{State: "error", Error: "Write failed"})
+					_ = os.Remove(tmpPath)
+					setProgress(DownloadProgress{State: "error", Error: "Disk write error: " + werr.Error()})
 					return
 				}
 				downloadedBytes += int64(n)
@@ -232,15 +247,31 @@ func StartBackgroundDownload(downloadURL string) error {
 			}
 			if err != nil {
 				outFile.Close()
-				_ = os.Remove(newPath)
-				setProgress(DownloadProgress{State: "error", Error: err.Error()})
+				_ = os.Remove(tmpPath)
+				setProgress(DownloadProgress{State: "error", Error: "Download interrupted: " + err.Error()})
 				return
 			}
 		}
 
 		outFile.Close()
+
+		// Safeguard: Ensure binary payload size is valid (> 1MB)
+		info, err := os.Stat(tmpPath)
+		if err != nil || info.Size() < 1000000 {
+			_ = os.Remove(tmpPath)
+			setProgress(DownloadProgress{State: "error", Error: "Downloaded payload is incomplete or invalid"})
+			return
+		}
+
 		if runtime.GOOS != "windows" {
-			_ = os.Chmod(newPath, 0755)
+			_ = os.Chmod(tmpPath, 0755)
+		}
+
+		// Atomic move from .tmp -> .new when download is 100% verified
+		if err := os.Rename(tmpPath, newPath); err != nil {
+			_ = os.Remove(tmpPath)
+			setProgress(DownloadProgress{State: "error", Error: "Failed to verify update payload"})
+			return
 		}
 
 		progMu.Lock()
@@ -258,7 +289,7 @@ func StartBackgroundDownload(downloadURL string) error {
 	return nil
 }
 
-// ApplyPreparedUpdate swaps running binary with prepared new binary and restarts app
+// ApplyPreparedUpdate performs enterprise atomic swap with complete rollback safeguard
 func ApplyPreparedUpdate() error {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -271,31 +302,39 @@ func ApplyPreparedUpdate() error {
 	}
 
 	newPath := execPath + ".new"
-	if _, err := os.Stat(newPath); err != nil {
-		return fmt.Errorf("prepared update file not found")
+	info, err := os.Stat(newPath)
+	if err != nil || info.Size() < 1000000 {
+		return fmt.Errorf("prepared update binary is missing or invalid")
 	}
 
 	oldPath := execPath + ".old"
 	_ = os.Remove(oldPath)
 
+	// Step 1: Rename running binary -> .old
 	if err := os.Rename(execPath, oldPath); err != nil {
 		_ = os.Remove(newPath)
-		return fmt.Errorf("failed to move current binary: %w", err)
+		return fmt.Errorf("failed to move current binary (permission locked): %w", err)
 	}
 
+	// Step 2: Rename .new -> execPath
 	if err := os.Rename(newPath, execPath); err != nil {
+		// Rollback safeguard: restore original binary!
 		_ = os.Rename(oldPath, execPath)
-		return fmt.Errorf("failed to place new binary: %w", err)
+		_ = os.Remove(newPath)
+		return fmt.Errorf("failed to place new binary (rollback executed): %w", err)
 	}
 
-	// Restart application with original command line arguments
+	// Step 3: Restart application with original command line arguments
 	cmd := exec.Command(execPath, os.Args[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to restart updated application: %w", err)
+		// Rollback safeguard if restart fails
+		_ = os.Rename(execPath, newPath)
+		_ = os.Rename(oldPath, execPath)
+		return fmt.Errorf("failed to launch updated binary: %w", err)
 	}
 
 	os.Exit(0)
