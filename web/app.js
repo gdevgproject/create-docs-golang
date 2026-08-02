@@ -466,16 +466,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const d = await res.json();
       dom.modalContent.innerHTML = `
         <div class="ex-section">
-          <div class="ex-title">Excluded Directories</div>
-          <div>${d.dirs.map(x => `<span class="ex-tag dir">${x}</span>`).join('')}</div>
+          <div class="ex-title">📂 Excluded Directories (${d.dirs.length})</div>
+          <div class="ex-tag-grid">${d.dirs.map(x => `<span class="ex-tag dir">${escHtml(x)}</span>`).join('')}</div>
         </div>
         <div class="ex-section">
-          <div class="ex-title">Excluded Files</div>
-          <div>${d.files.map(x => `<span class="ex-tag file">${x}</span>`).join('')}</div>
+          <div class="ex-title">📄 Excluded Files & Lockfiles (${d.files.length})</div>
+          <div class="ex-tag-grid">${d.files.map(x => `<span class="ex-tag file">${escHtml(x)}</span>`).join('')}</div>
         </div>
         <div class="ex-section">
-          <div class="ex-title">Binary Extensions (Structure only, Content skipped)</div>
-          <div>${d.extensions.map(x => `<span class="ex-tag bin">${x}</span>`).join('')}</div>
+          <div class="ex-title">🎮 Binary & Asset Extensions (${d.extensions.length})</div>
+          <div class="ex-tag-grid">${d.extensions.map(x => `<span class="ex-tag bin">.${escHtml(x)}</span>`).join('')}</div>
         </div>
       `;
     } catch {
