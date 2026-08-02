@@ -13,8 +13,8 @@ all: test build
 ## build: Build single binary for host OS
 build:
 	@echo "🔨 Building $(BINARY_NAME)..."
-	go build -ldflags="-s -w" -o $(BINARY_NAME) $(CMD_PATH)
-	@echo "✅ Build complete: ./$(BINARY_NAME)"
+	go build -ldflags="-H=windowsgui -s -w" -o $(BINARY_NAME).exe $(CMD_PATH)
+	@echo "✅ Build complete: ./$(BINARY_NAME).exe"
 
 ## build-all: Cross-compile binaries for Windows, macOS, and Linux (amd64 + arm64)
 build-all: clean
@@ -22,8 +22,8 @@ build-all: clean
 	@mkdir -p $(DIST_DIR)
 	
 	# Windows
-	GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)_windows_amd64.exe $(CMD_PATH)
-	GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)_windows_arm64.exe $(CMD_PATH)
+	GOOS=windows GOARCH=amd64 go build -ldflags="-H=windowsgui -s -w" -o $(DIST_DIR)/$(BINARY_NAME)_windows_amd64.exe $(CMD_PATH)
+	GOOS=windows GOARCH=arm64 go build -ldflags="-H=windowsgui -s -w" -o $(DIST_DIR)/$(BINARY_NAME)_windows_arm64.exe $(CMD_PATH)
 	
 	# macOS (Darwin)
 	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)_darwin_amd64 $(CMD_PATH)

@@ -64,8 +64,8 @@ func main() {
 
 	if cfg.OpenBrowser {
 		go func() {
-			time.Sleep(300 * time.Millisecond)
-			openBrowser(serverURL)
+			time.Sleep(350 * time.Millisecond)
+			openAppWindow(serverURL)
 		}()
 	}
 
@@ -78,17 +78,39 @@ func main() {
 	slog.Info("Server stopped clean.")
 }
 
-func openBrowser(url string) {
+func openAppWindow(url string) {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		// Check for Microsoft Edge (Standard on Windows 10/11) for Native App Window Mode (--app=URL)
+		edgePaths := []string{
+			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
+			`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
+			os.Getenv("LOCALAPPDATA") + `\Microsoft\Edge\Application\msedge.exe`,
+		}
+
+		var foundEdge string
+		for _, p := range edgePaths {
+			if _, err := os.Stat(p); err == nil {
+				foundEdge = p
+				break
+			}
+		}
+
+		if foundEdge != "" {
+			// Open as standalone Windows Desktop Application Window (no address bar, no tabs)
+			cmd = exec.Command(foundEdge, "--app="+url, "--window-size=1280,850")
+		} else {
+			cmd = exec.Command("cmd", "/c", "start", url)
+		}
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = exec.Command("open", "-a", "Google Chrome", "--args", "--app="+url)
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
 
-	_ = cmd.Start()
+	if cmd != nil {
+		_ = cmd.Start()
+	}
 }
