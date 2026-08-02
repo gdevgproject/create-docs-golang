@@ -344,3 +344,29 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 
 	s.jsonResponse(w, map[string]string{"status": "pong"})
 }
+
+func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.jsonError(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	tokens := s.tok.CountTokens(body.Text)
+	mode := s.tok.Mode()
+	chars := len(body.Text)
+	lines := strings.Count(body.Text, "\n") + 1
+	if body.Text == "" {
+		lines = 0
+	}
+
+	s.jsonResponse(w, map[string]any{
+		"tokens":     tokens,
+		"characters": chars,
+		"lines":      lines,
+		"token_mode": mode,
+	})
+}

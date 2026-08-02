@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnStruct: document.getElementById('btn-struct'),
     btnGen: document.getElementById('btn-gen'),
     btnExclusions: document.getElementById('btn-exclusions'),
+    btnCounter: document.getElementById('btn-counter'),
     editor: document.getElementById('editor'),
     fileBadge: document.getElementById('file-badge'),
     statsCards: document.getElementById('stats-cards'),
@@ -60,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.btnStruct.addEventListener('click', getStructure);
   dom.btnGen.addEventListener('click', startGenerate);
   dom.btnExclusions.addEventListener('click', showExclusions);
+  if (dom.btnCounter) dom.btnCounter.addEventListener('click', showTokenCounterModal);
   dom.btnLoad.addEventListener('click', loadFullContent);
   dom.btnCopy.addEventListener('click', copyContent);
   dom.btnCopyModal.addEventListener('click', copyModalContent);
@@ -106,6 +108,110 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  // ── QUICK TOKEN COUNTER ──
+  function showTokenCounterModal() {
+    dom.modalTitle.textContent = '🧮 Instant Token Counter (o200k_base Tiktoken)';
+    dom.btnCopyModal.style.display = 'none';
+
+    dom.modalContent.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:12px; height:100%;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div class="stat-card" style="flex:1; min-width:110px;">
+            <span class="stat-lbl">TOKENS (EXACT)</span>
+            <span class="stat-val" id="tc-tokens" style="font-size:1.1rem; color:var(--primary);">0</span>
+          </div>
+          <div class="stat-card" style="flex:1; min-width:110px;">
+            <span class="stat-lbl">CHARACTERS</span>
+            <span class="stat-val" id="tc-chars" style="font-size:1.1rem;">0</span>
+          </div>
+          <div class="stat-card" style="flex:1; min-width:110px;">
+            <span class="stat-lbl">LINES</span>
+            <span class="stat-val" id="tc-lines" style="font-size:1.1rem;">0</span>
+          </div>
+          <div class="stat-card" style="flex:1; min-width:110px;">
+            <span class="stat-lbl">CONTEXT (128K)</span>
+            <span class="stat-val" id="tc-context" style="font-size:1.1rem; color:var(--accent-emerald);">0.0%</span>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button class="action-btn primary sm" id="btn-tc-paste">📋 Paste Clipboard & Count</button>
+          <button class="action-btn ghost sm" id="btn-tc-clear">🧹 Clear</button>
+        </div>
+
+        <textarea id="tc-input" class="code-editor" style="flex:1; height:320px; border:1px solid var(--border); border-radius:4px; padding:12px;" placeholder="Paste any text, prompt, XML output, or source code snippet here to calculate exact o200k_base tokens..."></textarea>
+      </div>
+    `;
+
+    dom.modal.style.display = 'flex';
+
+    const tcInput = document.getElementById('tc-input');
+    const tcTokens = document.getElementById('tc-tokens');
+    const tcChars = document.getElementById('tc-chars');
+    const tcLines = document.getElementById('tc-lines');
+    const tcContext = document.getElementById('tc-context');
+    const btnPaste = document.getElementById('btn-tc-paste');
+    const btnClear = document.getElementById('btn-tc-clear');
+
+    let calcTimer = null;
+
+    async function runCount() {
+      const text = tcInput.value;
+      if (!text) {
+        tcTokens.textContent = '0';
+        tcChars.textContent = '0';
+        tcLines.textContent = '0';
+        tcContext.textContent = '0.0%';
+        return;
+      }
+
+      tcChars.textContent = text.length.toLocaleString();
+      const lineCount = (text.match(/\n/g) || []).length + 1;
+      tcLines.textContent = lineCount.toLocaleString();
+
+      try {
+        const res = await fetch('api/count-tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const d = await res.json();
+        const tokens = d.tokens || 0;
+        tcTokens.textContent = (d.token_mode === 'exact' ? '' : '~') + tokens.toLocaleString();
+        
+        const pct128 = ((tokens / 128000) * 100).toFixed(1);
+        tcContext.textContent = pct128 + '%';
+      } catch {
+        // ignore
+      }
+    }
+
+    tcInput.addEventListener('input', () => {
+      if (calcTimer) clearTimeout(calcTimer);
+      calcTimer = setTimeout(runCount, 150);
+    });
+
+    btnPaste.addEventListener('click', async () => {
+      try {
+        const clipboardText = await navigator.clipboard.readText();
+        if (clipboardText) {
+          tcInput.value = clipboardText;
+          runCount();
+          showToast('📋 Pasted & calculated tokens!');
+        }
+      } catch {
+        showToast('⚠️ Please paste text into the box manually');
+      }
+    });
+
+    btnClear.addEventListener('click', () => {
+      tcInput.value = '';
+      runCount();
+    });
+
+    tcInput.focus();
   }
 
   // ── HIGH-UX VERSION & UPDATES ──
@@ -194,7 +300,6 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ download_url: downloadUrl }),
       });
 
-      // Poll progress every 500ms
       if (progressPollTimer) clearInterval(progressPollTimer);
       progressPollTimer = setInterval(pollUpdateProgress, 500);
       showToast('⬇ Downloading update in background... You can keep using the app!');
