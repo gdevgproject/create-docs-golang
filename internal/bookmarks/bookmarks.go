@@ -15,6 +15,7 @@ type Bookmark struct {
 	ID        string `json:"id"`
 	Path      string `json:"path"`
 	Note      string `json:"note"`
+	Order     int    `json:"order"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -42,25 +43,7 @@ func (m *Manager) GetBookmarks() (map[string]Bookmark, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if _, err := os.Stat(m.filePath); os.IsNotExist(err) {
-		return make(map[string]Bookmark), nil
-	}
-
-	data, err := os.ReadFile(m.filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read bookmarks file: %w", err)
-	}
-
-	if len(data) == 0 {
-		return make(map[string]Bookmark), nil
-	}
-
-	var bookmarks map[string]Bookmark
-	if err := json.Unmarshal(data, &bookmarks); err != nil {
-		return make(map[string]Bookmark), nil
-	}
-
-	return bookmarks, nil
+	return m.loadUnlocked(), nil
 }
 
 // SaveBookmark adds or updates a bookmark path with optional note
@@ -71,11 +54,60 @@ func (m *Manager) SaveBookmark(path, note string) (map[string]Bookmark, error) {
 	bookmarks := m.loadUnlocked()
 	id := uuid.New().String()
 
+	maxOrder := 0
+	for _, bm := range bookmarks {
+		if bm.Order >= maxOrder {
+			maxOrder = bm.Order + 1
+		}
+	}
+
 	bookmarks[id] = Bookmark{
 		ID:        id,
 		Path:      filepath.ToSlash(filepath.Clean(path)),
 		Note:      note,
+		Order:     maxOrder,
 		CreatedAt: time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	if err := m.saveUnlocked(bookmarks); err != nil {
+		return nil, err
+	}
+
+	return bookmarks, nil
+}
+
+// UpdateNote modifies the display label of a bookmark
+func (m *Manager) UpdateNote(id, note string) (map[string]Bookmark, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	bookmarks := m.loadUnlocked()
+	bm, exists := bookmarks[id]
+	if !exists {
+		return nil, fmt.Errorf("bookmark not found: %s", id)
+	}
+
+	bm.Note = note
+	bookmarks[id] = bm
+
+	if err := m.saveUnlocked(bookmarks); err != nil {
+		return nil, err
+	}
+
+	return bookmarks, nil
+}
+
+// ReorderBookmarks updates sequence ordering for saved bookmarks
+func (m *Manager) ReorderBookmarks(orderedIDs []string) (map[string]Bookmark, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	bookmarks := m.loadUnlocked()
+	for idx, id := range orderedIDs {
+		if bm, exists := bookmarks[id]; exists {
+			bm.Order = idx
+			bookmarks[id] = bm
+		}
 	}
 
 	if err := m.saveUnlocked(bookmarks); err != nil {
@@ -107,6 +139,10 @@ func (m *Manager) loadUnlocked() map[string]Bookmark {
 
 	data, err := os.ReadFile(m.filePath)
 	if err != nil {
+		return make(map[string]Bookmark)
+	}
+
+	if len(data) == 0 {
 		return make(map[string]Bookmark)
 	}
 

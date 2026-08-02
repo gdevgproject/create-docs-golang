@@ -278,7 +278,10 @@ body {
   border: 1px solid var(--border);
   padding: 10px 12px;
   border-radius: var(--radius);
-  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -288,11 +291,19 @@ body {
   background: #1e2942;
 }
 
+.bm-content {
+  flex: 1;
+  min-width: 0;
+}
+
 .bm-name {
   font-weight: 600;
   font-size: 0.85rem;
   color: var(--text-main);
   margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bm-path {
@@ -302,21 +313,47 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 20px;
 }
 
-.bm-del {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: none;
+.bm-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+
+.bm-item:hover .bm-actions {
+  opacity: 1;
+}
+
+.bm-btn {
+  background: transparent;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 3px;
+  font-size: 0.75rem;
+  padding: 3px 5px;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bm-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+}
+
+.bm-btn.bm-del:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fda4af;
+}
+
+.bm-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
 }
 
 .bm-del:hover {

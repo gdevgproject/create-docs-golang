@@ -57,6 +57,7 @@ func (s *Server) routes() {
 	// API Endpoints
 	s.mux.HandleFunc("GET "+bp+"/api/bookmarks", s.handleGetBookmarks)
 	s.mux.HandleFunc("POST "+bp+"/api/bookmarks", s.handleSaveBookmark)
+	s.mux.HandleFunc("PUT "+bp+"/api/bookmarks", s.handleUpdateBookmark)
 	s.mux.HandleFunc("DELETE "+bp+"/api/bookmarks", s.handleDeleteBookmark)
 	s.mux.HandleFunc("GET "+bp+"/api/structure", s.handleGetStructure)
 	s.mux.HandleFunc("GET "+bp+"/api/exclusions", s.handleGetExclusions)

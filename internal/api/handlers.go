@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"codedocs/internal/bookmarks"
 	"codedocs/internal/config"
 	"codedocs/internal/generator"
 	"codedocs/internal/scanner"
@@ -45,6 +46,42 @@ func (s *Server) handleSaveBookmark(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bms, err := s.bm.SaveBookmark(cleanPath, body.Note)
+	if err != nil {
+		s.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.jsonResponse(w, map[string]any{
+		"status": "success",
+		"data":   bms,
+	})
+}
+
+func (s *Server) handleUpdateBookmark(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Action     string   `json:"action"`
+		ID         string   `json:"id"`
+		Note       string   `json:"note"`
+		OrderedIDs []string `json:"ordered_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	var bms map[string]bookmarks.Bookmark
+	var err error
+
+	if body.Action == "reorder" || len(body.OrderedIDs) > 0 {
+		bms, err = s.bm.ReorderBookmarks(body.OrderedIDs)
+	} else if body.ID != "" {
+		bms, err = s.bm.UpdateNote(body.ID, body.Note)
+	} else {
+		s.jsonError(w, "Missing id or ordered_ids", http.StatusBadRequest)
+		return
+	}
+
 	if err != nil {
 		s.jsonError(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	// Version can be set at build time via -ldflags "-X codedocs/internal/config.Version=v1.5.3"
-	Version    = "v1.5.3"
+	// Version can be set at build time via -ldflags "-X codedocs/internal/config.Version=v1.6.0"
+	Version    = "v1.6.0"
 	GitHubRepo = "gdevgproject/create-docs-golang"
 )
 
@@ -23,13 +23,16 @@ const (
 // ExcludedDirs contains comprehensive directory exclusions across all modern tech stacks
 // (Node, Next, Nest, React, Java, Spring, Kotlin, Android, Go, Python, C#/.NET, PHP/Laravel, Rust, Game Engines, etc.)
 var ExcludedDirs = []string{
-	// JavaScript / TypeScript / Frontend / Mobile Frameworks
+	// JavaScript / TypeScript / Frontend / Mobile Frameworks / Next.js / Bun
 	"node_modules",
 	".next",
 	".nuxt",
 	".svelte-kit",
 	".output",
 	".turbo",
+	".bun",
+	".vercel",
+	".swc",
 	".cache",
 	"coverage",
 	".angular",
@@ -71,7 +74,7 @@ var ExcludedDirs = []string{
 	"cgo",
 	".bin",
 
-	// C# / .NET / Unity / Unreal Engine / C++ Game Engines
+	// C# / .NET / Unity / Unreal Engine / Steam Client / Genshin Impact / GTA V
 	"obj",
 	".vs",
 	".idea",
@@ -86,6 +89,12 @@ var ExcludedDirs = []string{
 	"Saved",
 	"Binaries",
 	"Plugins/Developer",
+	"GenshinImpact_Data",
+	"Genshin Impact Game",
+	"GTA V",
+	"SteamLibrary",
+	"steamapps",
+	"ClientData",
 
 	// PHP / Laravel / Symfony / WordPress
 	"storage",
@@ -121,8 +130,9 @@ var ExcludedFiles = []string{
 	".env.production",
 	".env.staging",
 	".env.test",
+	"bun.lockb",
+	"bun.lock",
 	"package-lock.json",
-	"composer.lock",
 	"yarn.lock",
 	"pnpm-lock.yaml",
 	"Cargo.lock",
@@ -130,6 +140,8 @@ var ExcludedFiles = []string{
 	"poetry.lock",
 	"mix.lock",
 	"pubspec.lock",
+	"flake.lock",
+	"composer.lock",
 	".DS_Store",
 	"Thumbs.db",
 	"desktop.ini",
@@ -144,8 +156,9 @@ var BinaryExtensions = []string{
 	// Compiled Executables & Libraries
 	"exe", "dll", "so", "dylib", "class", "jar", "war", "ear", "phar", "bin", "obj", "pyc", "pyo", "pyd", "o", "a", "lib", "sys", "drv", "nupkg",
 
-	// Game Engine & Assets (Unity, Unreal Engine, Steam Games, Minecraft Mods)
+	// Game Engine & Client Assets (Unity, Unreal Engine, Steam Games, GTA V, Genshin Impact, Minecraft)
 	"pak", "vpk", "bsa", "ba2", "uasset", "umap", "asset", "unitypackage", "nbt", "mca", "gcm", "iso", "rom", "sav", "fbx", "obj", "blend", "gltf", "glb", "3ds", "dae", "max",
+	"rpf", "pck", "bik", "bik2", "bk2", "unity3d", "bundle",
 
 	// Graphics & Game Textures
 	"tga", "dds", "hdr", "exr", "psd", "ai", "eps", "ktx", "astc", "pvr", "pkm", "ktx2",

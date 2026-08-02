@@ -64,16 +64,25 @@ This document defines the core architectural rules, safety contracts, performanc
   `scanner.go` MUST parse local `.gitignore` rules in the project root directory.
 - **Multi-Ecosystem Default Exclusions**:
   Maintain comprehensive exclusions across:
-  - **JavaScript / Node / Next.js / Nest.js**: `node_modules`, `.next`, `.nuxt`, `.turbo`, `dist`, `build`.
+  - **JavaScript / Node / Next.js / Bun / React**: `node_modules`, `.next`, `.nuxt`, `.turbo`, `.bun`, `.vercel`, `.swc`, `dist`, `build`, `bun.lockb`, `bun.lock`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`.
   - **Java / Kotlin / Spring / Gradle**: `target`, `.gradle`, `build`, `.m2`, `.mvn`.
-  - **Python**: `__pycache__`, `.venv`, `venv`, `env`, `.pytest_cache`, `.egg-info`.
+  - **Python**: `__pycache__`, `.venv`, `venv`, `env`, `.pytest_cache`, `.egg-info`, `poetry.lock`.
   - **Go**: `vendor`, `bin`, `pkg`.
   - **C# / .NET**: `bin`, `obj`, `.vs`, `.nuget`.
-  - **Game Engines / Steam / Minecraft**: `Library`, `Temp`, `Logs`, `Build`, `Builds`, `Intermediate`.
+  - **Game Clients & Game Engines (Genshin Impact, GTA V, Steam, Unity, Unreal)**: `Library`, `Temp`, `Logs`, `Builds`, `Intermediate`, `GenshinImpact_Data`, `Genshin Impact Game`, `GTA V`, `SteamLibrary`, `steamapps`, `ClientData`, `.rpf`, `.pck`, `.bik`, `.bik2`, `.bk2`, `.uasset`, `.unity3d`, `.bundle`.
 
 ---
 
-## 6. Verification & Testing Protocol
+## 6. Bookmark Management & Sequence Contract (`internal/bookmarks`)
+
+- **In-Place Rename & Reorder**:
+  Bookmarks support `PUT /api/bookmarks` for both label renaming (`{"id": "...", "note": "..."}`) and reordering (`{"action": "reorder", "ordered_ids": [...]}`).
+- **Order Attribute Persistence**:
+  Bookmarks MUST be sorted by `Order` attribute (`(a.order ?? 0) - (b.order ?? 0)`) so custom user reordering is strictly preserved upon application restart.
+
+---
+
+## 7. Verification & Testing Protocol
 
 Before committing any code or releasing a version:
 1. Run `go test -count=1 ./...` and ensure ALL package tests pass.

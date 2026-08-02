@@ -377,7 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch('api/bookmarks');
       const data = await res.json();
-      const items = Object.values(data).sort((a, b) => b.created_at.localeCompare(a.created_at));
+      const items = Object.values(data).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || b.created_at.localeCompare(a.created_at));
 
       dom.bmCount.textContent = items.length;
 
@@ -387,24 +387,49 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const frag = document.createDocumentFragment();
-      items.forEach(bm => {
+      items.forEach((bm, index) => {
         const div = document.createElement('div');
         div.className = 'bm-item';
         div.innerHTML = `
-          <div class="bm-name">${escHtml(bm.note || 'Project')}</div>
-          <div class="bm-path" title="${escHtml(bm.path)}">${escHtml(bm.path)}</div>
-          <button class="bm-del" title="Delete bookmark">×</button>
+          <div class="bm-content">
+            <div class="bm-name" title="Click edit icon to rename">${escHtml(bm.note || 'Project')}</div>
+            <div class="bm-path" title="${escHtml(bm.path)}">${escHtml(bm.path)}</div>
+          </div>
+          <div class="bm-actions">
+            <button class="bm-btn bm-move-up" title="Move Up" ${index === 0 ? 'disabled' : ''}>▲</button>
+            <button class="bm-btn bm-move-down" title="Move Down" ${index === items.length - 1 ? 'disabled' : ''}>▼</button>
+            <button class="bm-btn bm-rename" title="Rename bookmark">✏️</button>
+            <button class="bm-btn bm-del" title="Delete bookmark">×</button>
+          </div>
         `;
+
         div.addEventListener('click', (e) => {
-          if (!e.target.classList.contains('bm-del')) {
+          if (!e.target.closest('.bm-actions')) {
             dom.pathInput.value = bm.path;
             showToast(`Loaded bookmark: ${bm.note || bm.path}`);
           }
         });
+
+        div.querySelector('.bm-move-up')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          moveBookmark(items, index, -1);
+        });
+
+        div.querySelector('.bm-move-down')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          moveBookmark(items, index, 1);
+        });
+
+        div.querySelector('.bm-rename')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          renameBookmark(bm);
+        });
+
         div.querySelector('.bm-del').addEventListener('click', (e) => {
           e.stopPropagation();
           deleteBookmark(bm.id);
         });
+
         frag.appendChild(div);
       });
 
@@ -412,6 +437,50 @@ document.addEventListener('DOMContentLoaded', () => {
       dom.bmList.appendChild(frag);
     } catch {
       dom.bmList.innerHTML = '<div class="bm-empty">Failed to load bookmarks</div>';
+    }
+  }
+
+  async function moveBookmark(items, currentIndex, direction) {
+    const targetIndex = currentIndex + direction;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const newItems = [...items];
+    const [moved] = newItems.splice(currentIndex, 1);
+    newItems.splice(targetIndex, 0, moved);
+
+    const orderedIDs = newItems.map(x => x.id);
+
+    try {
+      const res = await fetch('api/bookmarks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reorder', ordered_ids: orderedIDs }),
+      });
+      if (res.ok) {
+        loadBookmarks();
+      }
+    } catch {
+      showToast('❌ Error reordering bookmarks');
+    }
+  }
+
+  async function renameBookmark(bm) {
+    const newNote = prompt('Edit Bookmark Label:', bm.note || bm.path);
+    if (newNote === null) return;
+    const cleanNote = newNote.trim();
+
+    try {
+      const res = await fetch('api/bookmarks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bm.id, note: cleanNote }),
+      });
+      if (res.ok) {
+        loadBookmarks();
+        showToast('✏️ Bookmark label updated!');
+      }
+    } catch {
+      showToast('❌ Error renaming bookmark');
     }
   }
 
