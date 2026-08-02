@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	// Version can be set at build time via -ldflags "-X codedocs/internal/config.Version=v1.1.2"
-	Version    = "v1.1.2"
+	// Version can be set at build time via -ldflags "-X codedocs/internal/config.Version=v1.1.3"
+	Version    = "v1.1.3"
 	GitHubRepo = "gdevgproject/create-docs-golang"
 )
 
@@ -105,9 +105,13 @@ func DefaultConfig() *Config {
 	}
 	bookmarkFile := filepath.Join(userConfig, "codedocs", "saved_paths.json")
 
+	// Leave 1 CPU core free for OS responsiveness if CPU count > 4
 	workers := runtime.NumCPU()
+	if workers > 4 {
+		workers = workers - 1
+	}
 	if workers < 1 {
-		workers = 4
+		workers = 1
 	}
 
 	return &Config{
