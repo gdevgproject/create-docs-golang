@@ -18,7 +18,21 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 2. Windows GUI & Security Contract (`cmd/codedocs`)
+## 2. Text Extraction & Encoding Safety Contract (`internal/generator`)
+
+- **Automatic BOM & Multi-Encoding Decoding**:
+  `CleanAndValidateText` MUST detect and decode:
+  - UTF-8 BOM (`\xEF\xBB\xBF`) ➔ Stripped cleanly.
+  - UTF-16 LE BOM (`\xFF\xFE`) ➔ Decoded to valid UTF-8 string text.
+  - UTF-16 BE BOM (`\xFE\xFF`) ➔ Decoded to valid UTF-8 string text.
+- **Embedded Null-Byte Binary Safeguard (`\x00`)**:
+  If a file contains embedded null bytes `\x00` in the first 1024 bytes (even if named `.go`, `.ts`, `.txt`, `.dat`), it MUST be treated as a binary file (`isText = false`) and safely excluded (`[BINARY/MEDIA FILE - CONTENT EXCLUDED]`).
+- **Gibberish Control Code Sanitization**:
+  Use `strings.ToValidUTF8` and filter non-printable control characters (`\x00` - `\x1F` except `\n`, `\r`, `\t`) to prevent unprintable gibberish (`#fx#'`) from polluting Tiktoken BPE calculations or XML prompts.
+
+---
+
+## 3. Windows GUI & Security Contract (`cmd/codedocs`)
 
 - **Antivirus False Positive Safeguard**:
   DO NOT introduce raw, dynamic `user32.dll` or `dwmapi.dll` syscalls via `unsafe.Pointer` function calls.
@@ -29,7 +43,7 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 3. Auto-Updater Atomic Swap & Rollback Safeguard (`internal/updater`)
+## 4. Auto-Updater Atomic Swap & Rollback Safeguard (`internal/updater`)
 
 - **Network Resilience**:
   HTTP Client for downloads MUST use explicit timeouts (`5 * time.Minute`) and set `User-Agent: CodePulse-Updater/vX.Y.Z`.
@@ -44,7 +58,7 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 4. Multi-Ecosystem Exclusion Engine (`internal/scanner`, `internal/config`)
+## 5. Multi-Ecosystem Exclusion Engine (`internal/scanner`, `internal/config`)
 
 - **Automatic `.gitignore` Support**:
   `scanner.go` MUST parse local `.gitignore` rules in the project root directory.
@@ -59,9 +73,9 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 5. Verification & Testing Protocol
+## 6. Verification & Testing Protocol
 
 Before committing any code or releasing a version:
-1. Run `go test ./...` and ensure ALL package tests pass.
+1. Run `go test -count=1 ./...` and ensure ALL package tests pass.
 2. Run `go vet ./...` and ensure ZERO static analysis warnings.
 3. Build production binary: `go build -ldflags="-H=windowsgui -s -w -X codedocs/internal/config.Version=vX.Y.Z" -o codedocs.exe ./cmd/codedocs`.

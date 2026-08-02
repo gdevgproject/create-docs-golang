@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	"codedocs/internal/config"
 	"codedocs/internal/scanner"
@@ -356,20 +358,34 @@ func (g *Generator) processFile(j job) result {
 		}
 	}
 
-	data, err := os.ReadFile(j.path)
-	if err != nil || len(data) == 0 {
+	rawBytes, err := os.ReadFile(j.path)
+	if err != nil || len(rawBytes) == 0 {
 		return result{index: j.index, rel: j.rel}
 	}
 
-	lines := int64(bytes.Count(data, []byte("\n"))) + 1
-	tokens := int64(g.tok.CountTokens(string(data)))
+	cleanText, isText := CleanAndValidateText(rawBytes)
+	if !isText {
+		// Null byte binary payload detected despite extension!
+		var buf bytes.Buffer
+		buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n[BINARY/MEDIA FILE - CONTENT EXCLUDED]\n</file>\n\n", j.rel))
+		return result{
+			index:  j.index,
+			rel:    j.rel,
+			chunk:  buf.Bytes(),
+			lines:  1,
+			tokens: 0,
+		}
+	}
+
+	lines := int64(strings.Count(cleanText, "\n")) + 1
+	tokens := int64(g.tok.CountTokens(cleanText))
 
 	var buf bytes.Buffer
-	buf.Grow(len(data) + 128)
+	buf.Grow(len(cleanText) + 128)
 
 	buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n<![CDATA[\n", j.rel))
-	buf.Write(data)
-	if !bytes.HasSuffix(data, []byte("\n")) {
+	buf.WriteString(cleanText)
+	if !strings.HasSuffix(cleanText, "\n") {
 		buf.WriteByte('\n')
 	}
 	buf.WriteString("]]>\n</file>\n\n")
@@ -381,4 +397,62 @@ func (g *Generator) processFile(j job) result {
 		lines:  lines,
 		tokens: tokens,
 	}
+}
+
+// CleanAndValidateText sanitizes file bytes, converts UTF-16/BOM to valid UTF-8,
+// detects embedded binary null bytes \x00, and strips unprintable control chars.
+func CleanAndValidateText(data []byte) (string, bool) {
+	if len(data) == 0 {
+		return "", true
+	}
+
+	// 1. Detect UTF-8 BOM (\xEF\xBB\xBF) and strip it
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		data = data[3:]
+	} else if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE {
+		// 2. Detect UTF-16 LE BOM (\xFF\xFE) and decode to UTF-8
+		data = decodeUTF16LE(data[2:])
+	} else if len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF {
+		// 3. Detect UTF-16 BE BOM (\xFE\xFF) and decode to UTF-8
+		data = decodeUTF16BE(data[2:])
+	}
+
+	// 4. Null byte heuristic check: If first 1024 bytes contain \x00, treat as BINARY file!
+	checkLen := len(data)
+	if checkLen > 1024 {
+		checkLen = 1024
+	}
+	if bytes.IndexByte(data[:checkLen], 0x00) != -1 {
+		return "", false // Binary payload detected!
+	}
+
+	// 5. Convert invalid UTF-8 byte sequences safely using strings.ToValidUTF8
+	validStr := strings.ToValidUTF8(string(data), "")
+
+	// 6. Clean non-printable control codes (keep \n, \r, \t, and printable unicode)
+	var sb strings.Builder
+	sb.Grow(len(validStr))
+	for _, r := range validStr {
+		if r == '\n' || r == '\r' || r == '\t' || (r >= 32 && r != 127) {
+			sb.WriteRune(r)
+		}
+	}
+
+	return sb.String(), true
+}
+
+func decodeUTF16LE(b []byte) []byte {
+	var u16s []uint16
+	for i := 0; i+1 < len(b); i += 2 {
+		u16s = append(u16s, uint16(b[i])|uint16(b[i+1])<<8)
+	}
+	return []byte(string(utf16.Decode(u16s)))
+}
+
+func decodeUTF16BE(b []byte) []byte {
+	var u16s []uint16
+	for i := 0; i+1 < len(b); i += 2 {
+		u16s = append(u16s, uint16(b[i])<<8|uint16(b[i+1]))
+	}
+	return []byte(string(utf16.Decode(u16s)))
 }

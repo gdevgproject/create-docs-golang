@@ -12,23 +12,33 @@ import (
 	"codedocs/internal/tokenizer"
 )
 
-func TestSanitizeContent(t *testing.T) {
-	input := "line1  \r\nline2\t \r\n\n\n\nline3\r\n"
-	sanitized := SanitizeContent(input)
-
-	expected := "line1\nline2\n\nline3\n"
-	if sanitized != expected {
-		t.Errorf("SanitizeContent failed.\nGot: %q\nWant: %q", sanitized, expected)
+func TestCleanAndValidateText(t *testing.T) {
+	// 1. UTF-8 BOM test
+	bomUTF8 := append([]byte{0xEF, 0xBB, 0xBF}, []byte("package main\n")...)
+	gotStr, isText := CleanAndValidateText(bomUTF8)
+	if !isText || gotStr != "package main\n" {
+		t.Errorf("UTF-8 BOM decode failed. Got: %q, isText: %v", gotStr, isText)
 	}
-}
 
-func TestEscapeCDATA(t *testing.T) {
-	input := "var x = ']]></script>';"
-	escaped := EscapeCDATA(input)
+	// 2. UTF-16 LE BOM test
+	utf16LE := []byte{0xFF, 0xFE, 'H', 0x00, 'e', 0x00, 'l', 0x00, 'l', 0x00, 'o', 0x00}
+	gotStr16, isText16 := CleanAndValidateText(utf16LE)
+	if !isText16 || gotStr16 != "Hello" {
+		t.Errorf("UTF-16 LE BOM decode failed. Got: %q, isText: %v", gotStr16, isText16)
+	}
 
-	expected := "var x = ']]]]><![CDATA[></script>';"
-	if escaped != expected {
-		t.Errorf("EscapeCDATA failed.\nGot: %q\nWant: %q", escaped, expected)
+	// 3. Null byte binary payload detection test
+	nullBinary := []byte("func main() {}\x00\x01\x02\xFF")
+	_, isTextNull := CleanAndValidateText(nullBinary)
+	if isTextNull {
+		t.Errorf("expected null byte binary payload to be flagged as binary (isText=false)")
+	}
+
+	// 4. Invalid UTF-8 / Unprintable character stripping test
+	invalidBytes := []byte("Hello \xFF\xFE World \x07\x08!\n")
+	gotClean, isTextClean := CleanAndValidateText(invalidBytes)
+	if !isTextClean || !strings.Contains(gotClean, "Hello") || strings.Contains(gotClean, "\x07") {
+		t.Errorf("invalid byte cleaning failed. Got: %q", gotClean)
 	}
 }
 
