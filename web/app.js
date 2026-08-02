@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── BOOKMARKS ──
   async function loadBookmarks() {
     try {
-      const res = await fetch('/api/bookmarks');
+      const res = await fetch('api/bookmarks');
       const data = await res.json();
       const items = Object.values(data).sort((a, b) => b.created_at.localeCompare(a.created_at));
 
@@ -134,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!path) return showToast('⚠️ Please enter a project path first!');
 
     try {
-      const res = await fetch('/api/bookmarks', {
+      const res = await fetch('api/bookmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function deleteBookmark(id) {
     try {
-      const res = await fetch('/api/bookmarks', {
+      const res = await fetch('api/bookmarks', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.modal.style.display = 'flex';
 
     try {
-      const res = await fetch(`/api/structure?path=${encodeURIComponent(path)}`);
+      const res = await fetch(`api/structure?path=${encodeURIComponent(path)}`);
       const json = await res.json();
       if (json.status === 'success') {
         dom.modalContent.textContent = json.data;
@@ -199,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.modal.style.display = 'flex';
 
     try {
-      const res = await fetch('/api/exclusions');
+      const res = await fetch('api/exclusions');
       const d = await res.json();
       dom.modalContent.innerHTML = `
         <div class="ex-section">
@@ -251,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.percentText.textContent = '0%';
     dom.speedText.textContent = '';
 
-    const es = new EventSource(`/api/generate?path=${encodeURIComponent(path)}&mode=${mode}`);
+    const es = new EventSource(`api/generate?path=${encodeURIComponent(path)}&mode=${mode}`);
 
     es.addEventListener('log', e => {
       dom.logText.textContent = JSON.parse(e.data).message;
@@ -285,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
       dom.statSize.textContent = formatBytes(d.size || 0);
       dom.statTime.textContent = (d.elapsed || 0) + 's';
 
-      dom.btnDownload.href = `/api/download?file=${d.message}`;
+      dom.btnDownload.href = `api/download?file=${d.message}`;
       dom.btnDownload.removeAttribute('disabled');
 
       if (mode === 'stats') {
@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(`✅ Generated ${d.total} files in ${d.elapsed}s`);
       } else {
         dom.logText.textContent = '✅ Completed! Loading output...';
-        fetch(`/api/content?file=${d.message}`)
+        fetch(`api/content?file=${d.message}`)
           .then(r => r.text())
           .then(text => {
             dom.editor.value = text;
@@ -342,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.btnLoad.disabled = true;
     dom.btnLoad.textContent = '⏳ Loading...';
     try {
-      const res = await fetch(`/api/content?file=${lastGeneratedFile}`);
+      const res = await fetch(`api/content?file=${lastGeneratedFile}`);
       const text = await res.text();
       dom.editor.value = text;
       contentLoaded = true;
@@ -361,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!contentLoaded && lastGeneratedFile) {
       try {
-        const res = await fetch(`/api/content?file=${lastGeneratedFile}`);
+        const res = await fetch(`api/content?file=${lastGeneratedFile}`);
         textToCopy = await res.text();
       } catch {
         return showToast('❌ Error fetching content for copy');

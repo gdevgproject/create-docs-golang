@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -62,11 +63,24 @@ var BinaryExtensions = []string{
 type Config struct {
 	Port         int
 	Host         string
+	BasePath     string // Custom URL prefix, e.g. "/codedocs" -> http://localhost:8080/codedocs
 	MaxFileSize  int64
 	Workers      int
 	TempDir      string
 	CacheDir     string
 	BookmarkFile string
+}
+
+// CleanBasePath normalizes base path to start with / and end without /
+func NormalizeBasePath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" || p == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return strings.TrimSuffix(p, "/")
 }
 
 // DefaultConfig returns the default configuration
@@ -91,6 +105,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Port:         8080,
 		Host:         "0.0.0.0",
+		BasePath:     "",
 		MaxFileSize:  10485760, // 10MB
 		Workers:      workers,
 		TempDir:      "./temp_docs",
@@ -105,6 +120,7 @@ func ParseFlags() *Config {
 
 	flag.IntVar(&cfg.Port, "port", cfg.Port, "HTTP server port")
 	flag.StringVar(&cfg.Host, "host", cfg.Host, "HTTP server host")
+	flag.StringVar(&cfg.BasePath, "base-path", cfg.BasePath, "Custom URL path prefix (e.g. /codedocs or /docs)")
 	flag.Int64Var(&cfg.MaxFileSize, "max-size", cfg.MaxFileSize, "Max file size in bytes to include content (default 10MB)")
 	flag.IntVar(&cfg.Workers, "workers", cfg.Workers, "Worker pool concurrency size")
 	flag.StringVar(&cfg.TempDir, "temp-dir", cfg.TempDir, "Directory to store generated documentation files")
@@ -112,5 +128,6 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.BookmarkFile, "bookmark-file", cfg.BookmarkFile, "Path to bookmarks JSON file")
 
 	flag.Parse()
+	cfg.BasePath = NormalizeBasePath(cfg.BasePath)
 	return cfg
 }

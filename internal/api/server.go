@@ -49,24 +49,37 @@ func NewServer(cfg *config.Config, webFS fs.FS) *Server {
 }
 
 func (s *Server) routes() {
+	bp := s.cfg.BasePath
+
 	// API Endpoints
-	s.mux.HandleFunc("GET /api/bookmarks", s.handleGetBookmarks)
-	s.mux.HandleFunc("POST /api/bookmarks", s.handleSaveBookmark)
-	s.mux.HandleFunc("DELETE /api/bookmarks", s.handleDeleteBookmark)
-	s.mux.HandleFunc("GET /api/structure", s.handleGetStructure)
-	s.mux.HandleFunc("GET /api/exclusions", s.handleGetExclusions)
-	s.mux.HandleFunc("GET /api/content", s.handleGetContent)
-	s.mux.HandleFunc("GET /api/download", s.handleDownload)
-	s.mux.HandleFunc("GET /api/generate", s.handleGenerate)
+	s.mux.HandleFunc("GET "+bp+"/api/bookmarks", s.handleGetBookmarks)
+	s.mux.HandleFunc("POST "+bp+"/api/bookmarks", s.handleSaveBookmark)
+	s.mux.HandleFunc("DELETE "+bp+"/api/bookmarks", s.handleDeleteBookmark)
+	s.mux.HandleFunc("GET "+bp+"/api/structure", s.handleGetStructure)
+	s.mux.HandleFunc("GET "+bp+"/api/exclusions", s.handleGetExclusions)
+	s.mux.HandleFunc("GET "+bp+"/api/content", s.handleGetContent)
+	s.mux.HandleFunc("GET "+bp+"/api/download", s.handleDownload)
+	s.mux.HandleFunc("GET "+bp+"/api/generate", s.handleGenerate)
 
 	// Legacy PHP route compatibility support
-	s.mux.HandleFunc("GET /index.php", s.handleLegacyQueryRoute)
-	s.mux.HandleFunc("POST /index.php", s.handleLegacyQueryRoute)
+	s.mux.HandleFunc("GET "+bp+"/index.php", s.handleLegacyQueryRoute)
+	s.mux.HandleFunc("POST "+bp+"/index.php", s.handleLegacyQueryRoute)
+
+	// Root redirect if BasePath is configured
+	if bp != "" {
+		s.mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, bp+"/", http.StatusFound)
+		})
+	}
 
 	// Static Web Assets & UI
 	if s.webFS != nil {
 		fileServer := http.FileServer(http.FS(s.webFS))
-		s.mux.Handle("GET /", fileServer)
+		if bp != "" {
+			s.mux.Handle("GET "+bp+"/", http.StripPrefix(bp, fileServer))
+		} else {
+			s.mux.Handle("GET /", fileServer)
+		}
 	}
 }
 
@@ -95,7 +108,12 @@ func (s *Server) handleLegacyQueryRoute(w http.ResponseWriter, r *http.Request) 
 		s.handleGenerate(w, r)
 	default:
 		if s.webFS != nil {
-			http.FileServer(http.FS(s.webFS)).ServeHTTP(w, r)
+			fs := http.FileServer(http.FS(s.webFS))
+			if s.cfg.BasePath != "" {
+				http.StripPrefix(s.cfg.BasePath, fs).ServeHTTP(w, r)
+			} else {
+				fs.ServeHTTP(w, r)
+			}
 			return
 		}
 		http.Error(w, "Not found", http.StatusNotFound)
