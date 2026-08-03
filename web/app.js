@@ -43,6 +43,14 @@ document.addEventListener('DOMContentLoaded', () => {
     verInfo: document.getElementById('ver-info'),
     btnCheckUpdate: document.getElementById('btn-check-update'),
     btnManualCheck: document.getElementById('btn-manual-check'),
+    btnExportBm: document.getElementById('btn-export-bm'),
+    btnImportBm: document.getElementById('btn-import-bm'),
+    importFileInput: document.getElementById('import-file-input'),
+    historyModal: document.getElementById('history-modal'),
+    historyModalTitle: document.getElementById('history-modal-title'),
+    historyModalContent: document.getElementById('history-modal-content'),
+    btnCloseHistoryModal: document.getElementById('btn-close-history-modal'),
+    btnClearHistory: document.getElementById('btn-clear-history'),
   };
 
   let toastTimer = null;
@@ -372,40 +380,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ── BOOKMARKS ──
+  // ── BOOKMARKS & HISTORY TIMELINE ──
+  let activeHistoryBm = null;
+
   function selectBookmark(bm) {
     dom.pathInput.value = bm.path;
 
-    if (bm.last_result) {
-      const lr = bm.last_result;
-      lastGeneratedFile = lr.file_name;
-      cachedFullText = null;
-      contentLoaded = false;
-      isFullRendered = false;
-
-      dom.fileBadge.className = 'status-badge badge-success';
-      dom.fileBadge.textContent = (lr.total || 0) + ' files (Last Scan)';
-
-      dom.statsCards.style.display = 'flex';
-      dom.statFiles.textContent = (lr.total || 0).toLocaleString();
-      dom.statLines.textContent = (lr.lines || 0).toLocaleString();
-      dom.statTokens.textContent = (lr.token_mode === 'exact' ? '' : '~') + (lr.tokens || 0).toLocaleString();
-      dom.statSize.textContent = formatBytes(lr.size || 0);
-      dom.statTime.textContent = (lr.elapsed || 0) + 's';
-      dom.statDate.textContent = lr.generated_at || '';
-
-      if (lr.file_name) {
-        dom.btnDownload.href = `api/download?file=${lr.file_name}`;
-        dom.btnDownload.removeAttribute('disabled');
-        dom.btnLoad.style.display = '';
-        dom.btnCopy.disabled = false;
-      }
-
-      dom.editor.value = `📌 Last Analyzed Result restored for "${bm.note || bm.path}".\n\nGenerated: ${lr.generated_at}\nFiles: ${lr.total}\nLines: ${(lr.lines || 0).toLocaleString()}\nTokens: ${(lr.tokens || 0).toLocaleString()}\nSize: ${formatBytes(lr.size || 0)}\n\nClick "📄 Load Content" (or "📋 Copy Docs") to load full document.`;
-      showToast(`📌 Restored last scan result for ${bm.note || bm.path}`);
+    const lr = bm.last_result || (bm.history && bm.history.length > 0 ? bm.history[0] : null);
+    if (lr) {
+      restoreScanResult(bm, lr);
     } else {
       showToast(`Loaded bookmark: ${bm.note || bm.path}`);
     }
+  }
+
+  function restoreScanResult(bm, lr) {
+    lastGeneratedFile = lr.file_name;
+    cachedFullText = null;
+    contentLoaded = false;
+    isFullRendered = false;
+
+    dom.fileBadge.className = 'status-badge badge-success';
+    dom.fileBadge.textContent = (lr.total || 0) + ' files (Restored Scan)';
+
+    dom.statsCards.style.display = 'flex';
+    dom.statFiles.textContent = (lr.total || 0).toLocaleString();
+    dom.statLines.textContent = (lr.lines || 0).toLocaleString();
+    dom.statTokens.textContent = (lr.token_mode === 'exact' ? '' : '~') + (lr.tokens || 0).toLocaleString();
+    dom.statSize.textContent = formatBytes(lr.size || 0);
+    dom.statTime.textContent = (lr.elapsed || 0) + 's';
+    dom.statDate.textContent = lr.generated_at || '';
+
+    if (lr.file_name) {
+      dom.btnDownload.href = `api/download?file=${lr.file_name}`;
+      dom.btnDownload.removeAttribute('disabled');
+      dom.btnLoad.style.display = '';
+      dom.btnCopy.disabled = false;
+    }
+
+    dom.editor.value = `📌 Analyzed Result restored for "${bm.note || bm.path}"\n\nGenerated: ${lr.generated_at}\nFiles: ${lr.total}\nLines: ${(lr.lines || 0).toLocaleString()}\nTokens: ${(lr.tokens || 0).toLocaleString()}\nSize: ${formatBytes(lr.size || 0)}\n\nClick "📄 Load Content" or "📋 Copy Docs" to load full document.`;
+    showToast(`📌 Restored scan from ${lr.generated_at}`);
   }
 
   async function loadBookmarks() {
@@ -423,14 +437,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const frag = document.createDocumentFragment();
       items.forEach((bm, index) => {
+        const historyCount = bm.history ? bm.history.length : (bm.last_result ? 1 : 0);
+
         const div = document.createElement('div');
         div.className = 'bm-item';
         div.innerHTML = `
           <div class="bm-content">
-            <div class="bm-name" title="Click edit icon to rename">${escHtml(bm.note || 'Project')}</div>
+            <div class="bm-name" title="Click edit icon to rename">
+              ${escHtml(bm.note || 'Project')}
+              ${historyCount > 0 ? `<span class="bm-history-count" title="${historyCount} scans recorded">📜 ${historyCount}</span>` : ''}
+            </div>
             <div class="bm-path" title="${escHtml(bm.path)}">${escHtml(bm.path)}</div>
           </div>
           <div class="bm-actions">
+            <button class="bm-btn bm-hist-btn" title="View scan history timeline">📜</button>
             <button class="bm-btn bm-move-up" title="Move Up" ${index === 0 ? 'disabled' : ''}>▲</button>
             <button class="bm-btn bm-move-down" title="Move Down" ${index === items.length - 1 ? 'disabled' : ''}>▼</button>
             <button class="bm-btn bm-rename" title="Rename bookmark">✏️</button>
@@ -442,6 +462,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!e.target.closest('.bm-actions')) {
             selectBookmark(bm);
           }
+        });
+
+        div.querySelector('.bm-hist-btn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showHistoryModal(bm);
         });
 
         div.querySelector('.bm-move-up')?.addEventListener('click', (e) => {
@@ -472,6 +497,137 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {
       dom.bmList.innerHTML = '<div class="bm-empty">Failed to load bookmarks</div>';
     }
+  }
+
+  function showHistoryModal(bm) {
+    activeHistoryBm = bm;
+    dom.historyModalTitle.textContent = `📜 Scan History Timeline — ${bm.note || bm.path}`;
+
+    const history = bm.history || (bm.last_result ? [bm.last_result] : []);
+
+    if (history.length === 0) {
+      dom.historyModalContent.innerHTML = '<div class="bm-empty">No scan history recorded for this bookmark yet. Click "Generate Docs" to create your first scan!</div>';
+    } else {
+      let html = '<div class="history-timeline">';
+      history.forEach((h, index) => {
+        html += `
+          <div class="history-card">
+            <div class="history-info">
+              <div class="history-time">
+                <span>🕒 ${escHtml(h.generated_at || 'Unknown')}</span>
+                ${index === 0 ? '<span class="history-badge">Latest Scan</span>' : ''}
+              </div>
+              <div class="history-meta">
+                <span>📦 ${h.total || 0} files</span>
+                <span>📝 ${(h.lines || 0).toLocaleString()} lines</span>
+                <span>⚡ ${(h.token_mode === 'exact' ? '' : '~') + (h.tokens || 0).toLocaleString()} tokens</span>
+                <span>💾 ${formatBytes(h.size || 0)}</span>
+                <span>⏱️ ${h.elapsed || 0}s</span>
+              </div>
+            </div>
+            <div class="history-actions">
+              <button class="btn btn-secondary sm btn-restore-item" data-idx="${index}">⚡ Restore</button>
+              <button class="btn btn-ghost sm text-danger btn-del-item" data-time="${escHtml(h.generated_at || '')}" title="Delete this scan history entry">✕</button>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+      dom.historyModalContent.innerHTML = html;
+
+      dom.historyModalContent.querySelectorAll('.btn-restore-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          restoreScanResult(bm, history[idx]);
+          dom.historyModal.style.display = 'none';
+        });
+      });
+
+      dom.historyModalContent.querySelectorAll('.btn-del-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const timeStr = btn.dataset.time;
+          deleteHistoryItem(bm.id, timeStr);
+        });
+      });
+    }
+
+    dom.historyModal.style.display = 'flex';
+  }
+
+  async function deleteHistoryItem(bmId, generatedAt) {
+    try {
+      const res = await fetch('api/bookmarks/history', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bmId, generated_at: generatedAt }),
+      });
+      if (res.ok) {
+        const resultData = await res.json();
+        const updatedBms = resultData.data || {};
+        const updatedBm = updatedBms[bmId];
+
+        showToast('🗑️ History timeline entry removed');
+        loadBookmarks();
+        if (updatedBm) {
+          showHistoryModal(updatedBm);
+        } else {
+          dom.historyModal.style.display = 'none';
+        }
+      }
+    } catch {
+      showToast('❌ Error deleting history item');
+    }
+  }
+
+  async function clearBookmarkHistory(bmId) {
+    if (!bmId || !confirm('Are you sure you want to clear all history timelines for this bookmark?')) return;
+
+    try {
+      const res = await fetch('api/bookmarks/history', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bmId }),
+      });
+      if (res.ok) {
+        showToast('🗑️ Cleared all scan history for bookmark');
+        dom.historyModal.style.display = 'none';
+        loadBookmarks();
+      }
+    } catch {
+      showToast('❌ Error clearing history');
+    }
+  }
+
+  function exportBookmarks() {
+    window.location.href = 'api/bookmarks/export';
+    showToast('📤 Exporting bookmarks backup JSON...');
+  }
+
+  function importBookmarks(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target.result;
+        const res = await fetch('api/bookmarks/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: content,
+        });
+
+        if (res.ok) {
+          showToast('📥 Bookmarks backup imported & merged successfully!');
+          loadBookmarks();
+        } else {
+          const errData = await res.json();
+          showToast('❌ Import failed: ' + (errData.message || 'Invalid format'));
+        }
+      } catch {
+        showToast('❌ Error reading import file');
+      }
+    };
+    reader.readAsText(file);
   }
 
   async function moveBookmark(items, currentIndex, direction) {
@@ -855,4 +1011,13 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('✅ Copied to clipboard!');
     }
   }
+
+  // ── BACKUP & RESTORE & HISTORY EVENT LISTENERS ──
+  if (dom.btnExportBm) dom.btnExportBm.addEventListener('click', exportBookmarks);
+  if (dom.btnImportBm) dom.btnImportBm.addEventListener('click', () => dom.importFileInput?.click());
+  if (dom.importFileInput) dom.importFileInput.addEventListener('change', (e) => importBookmarks(e.target.files[0]));
+  if (dom.btnCloseHistoryModal) dom.btnCloseHistoryModal.addEventListener('click', () => dom.historyModal.style.display = 'none');
+  if (dom.btnClearHistory) dom.btnClearHistory.addEventListener('click', () => {
+    if (activeHistoryBm) clearBookmarkHistory(activeHistoryBm.id);
+  });
 });

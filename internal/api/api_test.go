@@ -108,10 +108,65 @@ func TestAPI_BookmarksFlow(t *testing.T) {
 	delBody, _ := json.Marshal(map[string]string{"id": savedID})
 	delReq := httptest.NewRequest("DELETE", "/api/bookmarks", bytes.NewBuffer(delBody))
 	delW := httptest.NewRecorder()
-	server.ServeHTTP(w, delReq)
+	server.ServeHTTP(delW, delReq)
 
 	if delW.Code != http.StatusOK {
 		t.Fatalf("delete bookmark failed: status %d", delW.Code)
+	}
+}
+
+func TestAPI_ImportExportAndHistory(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.BookmarkFile = filepath.Join(t.TempDir(), "bookmarks.json")
+	server := NewServer(cfg, nil)
+
+	// 1. Export empty bookmarks
+	reqExp := httptest.NewRequest("GET", "/api/bookmarks/export", nil)
+	wExp := httptest.NewRecorder()
+	server.ServeHTTP(wExp, reqExp)
+	if wExp.Code != http.StatusOK {
+		t.Fatalf("export bookmarks failed: status %d", wExp.Code)
+	}
+
+	// 2. Import bookmark payload
+	importJSON := `[{"id":"1","path":"/test/import-path","note":"Imported App","history":[{"file_name":"f1.md","total":5,"lines":100,"tokens":500,"generated_at":"2026-08-03 05:00:00"}]}]`
+	reqImp := httptest.NewRequest("POST", "/api/bookmarks/import", bytes.NewBufferString(importJSON))
+	wImp := httptest.NewRecorder()
+	server.ServeHTTP(wImp, reqImp)
+	if wImp.Code != http.StatusOK {
+		t.Fatalf("import bookmarks failed: status %d", wImp.Code)
+	}
+
+	var impRes struct {
+		Status string `json:"status"`
+		Data   map[string]struct {
+			ID      string `json:"id"`
+			Path    string `json:"path"`
+			Note    string `json:"note"`
+			History []any  `json:"history"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(wImp.Body).Decode(&impRes)
+	if impRes.Status != "success" || len(impRes.Data) != 1 {
+		t.Fatalf("expected 1 imported bookmark, got: %v", impRes)
+	}
+
+	var importedID string
+	for id := range impRes.Data {
+		importedID = id
+	}
+
+	// 3. Delete history item
+	delHistBody, _ := json.Marshal(map[string]string{
+		"id":           importedID,
+		"generated_at": "2026-08-03 05:00:00",
+	})
+	reqDelHist := httptest.NewRequest("DELETE", "/api/bookmarks/history", bytes.NewBuffer(delHistBody))
+	wDelHist := httptest.NewRecorder()
+	server.ServeHTTP(wDelHist, reqDelHist)
+
+	if wDelHist.Code != http.StatusOK {
+		t.Fatalf("delete bookmark history failed: status %d", wDelHist.Code)
 	}
 }
 

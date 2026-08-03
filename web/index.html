@@ -66,8 +66,15 @@
     <!-- SECTION 4: BOOKMARKS -->
     <div class="sidebar-section flex-1">
       <div class="bm-header">
-        <label class="input-label">Saved Bookmarks</label>
-        <span class="bm-count" id="bm-count">0</span>
+        <div class="bm-title-group">
+          <label class="input-label">Saved Bookmarks</label>
+          <span class="bm-count" id="bm-count">0</span>
+        </div>
+        <div class="bm-tools-row">
+          <button class="btn btn-ghost btn-xs" id="btn-export-bm" title="Export bookmarks backup JSON">📤 Backup</button>
+          <button class="btn btn-ghost btn-xs" id="btn-import-bm" title="Import bookmarks backup JSON">📥 Restore</button>
+          <input type="file" id="import-file-input" accept=".json" style="display:none;">
+        </div>
       </div>
 
       <div class="bm-add-row">
@@ -180,6 +187,20 @@
         </div>
       </div>
       <div class="modal-body" id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- ══ HISTORY TIMELINE MODAL ══ -->
+  <div class="modal-overlay" id="history-modal" style="display:none;">
+    <div class="modal-box modal-lg">
+      <div class="modal-head">
+        <span id="history-modal-title">📜 Scan History Timeline</span>
+        <div class="modal-actions">
+          <button class="btn btn-ghost sm text-danger" id="btn-clear-history">🗑️ Clear History</button>
+          <button class="btn btn-ghost sm" id="btn-close-history-modal">✕ Close</button>
+        </div>
+      </div>
+      <div class="modal-body" id="history-modal-content"></div>
     </div>
   </div>
 

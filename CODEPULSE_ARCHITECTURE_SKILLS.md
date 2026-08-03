@@ -73,14 +73,15 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 6. Bookmark Management & Last Result Persistence (`internal/bookmarks`)
+## 6. Bookmark History Timelines & Import/Export Engine (`internal/bookmarks`)
 
-- **In-Place Rename & Reorder**:
-  Bookmarks support `PUT /api/bookmarks` for both label renaming (`{"id": "...", "note": "..."}`) and reordering (`{"action": "reorder", "ordered_ids": [...]}`).
-- **Order Attribute Persistence**:
-  Bookmarks MUST be sorted by `Order` attribute (`(a.order ?? 0) - (b.order ?? 0)`) so custom user reordering is strictly preserved upon application restart.
-- **Automatic Last Generation Stats Caching**:
-  When generation finishes, if project path matches a saved bookmark, `SaveLastResult` MUST automatically attach and persist `LastResult` (`total`, `lines`, `tokens`, `size`, `elapsed`, `generated_at`, `file_name`) into `saved_paths.json`. Clicking a bookmark restores stats cards and action buttons instantly.
+- **Multi-Version Scan History (`History []LastResult`)**:
+  Every scan completion appends to `bm.History` sorted by `generated_at` descending. `LastResult` points to `History[0]` (the latest scan).
+- **Selective & Batch History Purging**:
+  `DELETE /api/bookmarks/history` supports deleting individual historical scan entries by timestamp or clearing all history entries for a bookmark. Deleting a bookmark purges all history cleanly.
+- **Backup Export & Import Merge Contract**:
+  - `GET /api/bookmarks/export`: Generates downloadable JSON backup containing bookmarks and full scan timelines.
+  - `POST /api/bookmarks/import`: Performs cumulative merge on existing paths. Duplicate history entries matching `generated_at` are overwritten by imported payloads; new timestamps are appended into the timeline.
 
 ---
 

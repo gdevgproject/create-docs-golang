@@ -120,6 +120,76 @@ func (s *Server) handleDeleteBookmark(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleDeleteBookmarkHistory(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID          string `json:"id"`
+		GeneratedAt string `json:"generated_at"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if body.ID == "" {
+		s.jsonError(w, "ID is required", http.StatusBadRequest)
+		return
+	}
+
+	var bms map[string]bookmarks.Bookmark
+	var err error
+
+	if strings.TrimSpace(body.GeneratedAt) != "" {
+		bms, err = s.bm.DeleteHistoryItem(body.ID, body.GeneratedAt)
+	} else {
+		bms, err = s.bm.ClearHistory(body.ID)
+	}
+
+	if err != nil {
+		s.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.jsonResponse(w, map[string]any{
+		"status": "success",
+		"data":   bms,
+	})
+}
+
+func (s *Server) handleExportBookmarks(w http.ResponseWriter, r *http.Request) {
+	data, err := s.bm.ExportData()
+	if err != nil {
+		s.jsonError(w, fmt.Sprintf("Failed to export bookmarks: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	dateStr := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("codedocs_bookmarks_backup_%s.json", dateStr)
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Write(data)
+}
+
+func (s *Server) handleImportBookmarks(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil || len(bodyBytes) == 0 {
+		s.jsonError(w, "Import payload is empty", http.StatusBadRequest)
+		return
+	}
+
+	bms, err := s.bm.ImportData(bodyBytes)
+	if err != nil {
+		s.jsonError(w, fmt.Sprintf("Import failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	s.jsonResponse(w, map[string]any{
+		"status": "success",
+		"data":   bms,
+	})
+}
+
 func (s *Server) handleGetStructure(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
@@ -235,7 +305,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		defer close(events)
 		res, err := s.gen.Generate(ctx, projectPath, mode, events)
 		if err == nil && res != nil {
-			_, _ = s.bm.SaveLastResult(projectPath, bookmarks.LastResult{
+			_, _ = s.bm.SaveHistoryResult(projectPath, bookmarks.LastResult{
 				FileName:    res.FileName,
 				TotalFiles:  res.TotalFiles,
 				TotalLines:  res.TotalLines,
