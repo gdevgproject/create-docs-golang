@@ -456,6 +456,11 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(`📌 Restored scan from ${lr.generated_at}`);
   }
 
+  function cleanTimeDisplay(str) {
+    if (!str) return 'Unknown';
+    return str.replace(/\s*\([^\)]+\)/g, '').trim();
+  }
+
   function renderRightHistoryPanel(bm) {
     if (!bm) {
       dom.hpBmName.textContent = 'Select a bookmark';
@@ -474,24 +479,25 @@ document.addEventListener('DOMContentLoaded', () => {
       dom.btnHpClear.style.display = '';
       let html = '<div class="history-timeline">';
       history.forEach((h, index) => {
+        const timeStr = cleanTimeDisplay(h.generated_at);
         html += `
           <div class="history-card">
-            <div class="history-info">
-              <div class="history-time">
-                <span>🕒 ${escHtml(h.generated_at || 'Unknown')}</span>
-                ${index === 0 ? '<span class="history-badge">Latest Scan</span>' : ''}
+            <div class="history-card-top">
+              <div class="history-time-group">
+                <span class="history-time">🕒 ${escHtml(timeStr)}</span>
+                ${index === 0 ? '<span class="history-badge">Latest</span>' : ''}
               </div>
-              <div class="history-meta">
-                <span>📦 ${h.total || 0} files</span>
-                <span>📝 ${(h.lines || 0).toLocaleString()} lines</span>
-                <span>⚡ ${(h.token_mode === 'exact' ? '' : '~') + (h.tokens || 0).toLocaleString()} tokens</span>
-                <span>💾 ${formatBytes(h.size || 0)}</span>
-                <span>⏱️ ${h.elapsed || 0}s</span>
+              <div class="history-actions">
+                <button class="btn btn-secondary btn-xs btn-restore-item" data-idx="${index}" title="Restore scan result">⚡ Restore</button>
+                <button class="btn btn-ghost btn-xs text-danger btn-del-item" data-time="${escHtml(h.generated_at || '')}" title="Delete history entry">✕</button>
               </div>
             </div>
-            <div class="history-actions">
-              <button class="btn btn-secondary sm btn-restore-item" data-idx="${index}">⚡ Restore</button>
-              <button class="btn btn-ghost sm text-danger btn-del-item" data-time="${escHtml(h.generated_at || '')}" title="Delete this scan history entry">✕</button>
+            <div class="history-tags-grid">
+              <span class="history-tag" title="Files">📦 ${(h.total || 0).toLocaleString()} files</span>
+              <span class="history-tag" title="Lines">📝 ${(h.lines || 0).toLocaleString()} lines</span>
+              <span class="history-tag" title="Tokens">⚡ ${(h.token_mode === 'exact' ? '' : '~') + (h.tokens || 0).toLocaleString()} tokens</span>
+              <span class="history-tag" title="File Size">💾 ${formatBytes(h.size || 0)}</span>
+              <span class="history-tag" title="Elapsed Time">⏱️ ${h.elapsed || 0}s</span>
             </div>
           </div>
         `;
