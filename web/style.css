@@ -995,7 +995,9 @@ textarea.code-editor {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 480px;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -1007,8 +1009,8 @@ textarea.code-editor {
   padding: 12px 14px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 10px;
   transition: all 0.15s ease;
 }
 
@@ -1020,8 +1022,9 @@ textarea.code-editor {
 .history-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
+  min-width: 0;
 }
 
 .history-time {

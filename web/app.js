@@ -861,6 +861,24 @@ document.addEventListener('DOMContentLoaded', () => {
       dom.btnDownload.href = `api/download?file=${d.message}`;
       dom.btnDownload.removeAttribute('disabled');
 
+      // Real-time keep-sync history panel & bookmarks!
+      try {
+        const bmRes = await fetch('api/bookmarks');
+        allBookmarksMap = (await bmRes.json()) || {};
+        const cleanTarget = cleanPath(path);
+        const match = Object.values(allBookmarksMap).find(bm => cleanPath(bm.path) === cleanTarget);
+        if (match) {
+          activeBookmarkId = match.id;
+        }
+        await loadBookmarks();
+        if (activeBookmarkId && allBookmarksMap[activeBookmarkId]) {
+          renderRightHistoryPanel(allBookmarksMap[activeBookmarkId]);
+          if (dom.hpTimeline) dom.hpTimeline.scrollTop = 0;
+        }
+      } catch {
+        // ignore sync error
+      }
+
       if (mode === 'stats') {
         dom.editor.value = `📊 "Stats Only" Mode — Thống kê đã sẵn sàng.\n\nFile output đã được ghi tại server.\nBấm nút "📄 Load Content" (hoặc "📋 Copy Docs") để tải nội dung chi tiết.`;
         dom.btnLoad.style.display = '';
