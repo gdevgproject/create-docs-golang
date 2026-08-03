@@ -90,10 +90,27 @@
     <hr class="divider">
 
     <!-- SECTION 5: FOOTER VERSION & IN-PLACE UPDATER -->
-    <div class="version-row">
-      <span class="version-text" id="ver-info">CodePulse AI v1.5.0</span>
-      <button class="btn btn-ghost sm" id="btn-manual-check" style="font-size:0.7rem; padding:2px 8px;" title="Check GitHub for Updates">🔄 Check Update</button>
-      <button class="btn-update-badge" id="btn-check-update" style="display:none;" title="Click to update application">✨ Update Available</button>
+    <div class="version-container">
+      <div class="version-row">
+        <span class="version-text" id="ver-info">CodePulse AI v1.7.2</span>
+        <button class="btn btn-ghost sm" id="btn-manual-check" style="font-size:0.7rem; padding:2px 8px;" title="Check GitHub for Updates">🔄 Check Update</button>
+        <button class="btn-update-badge" id="btn-check-update" style="display:none;" title="Click to download update">✨ Update Available</button>
+      </div>
+
+      <!-- IN-PLACE UPDATE PROGRESS & RESTART CONTAINER -->
+      <div class="update-card" id="update-card" style="display:none;">
+        <div class="update-card-header">
+          <span class="update-card-title" id="update-card-title">Downloading Update...</span>
+          <span class="update-card-pct" id="update-card-pct">0%</span>
+        </div>
+        <div class="update-progress-bar">
+          <div class="update-progress-fill" id="update-progress-fill"></div>
+        </div>
+        <div class="update-card-footer">
+          <span class="update-card-sub" id="update-card-sub">Connecting to GitHub...</span>
+          <button class="btn btn-primary sm btn-restart-now" id="btn-restart-now" style="display:none;">🚀 Restart App Now</button>
+        </div>
+      </div>
     </div>
   </aside>
 

@@ -888,12 +888,18 @@ textarea.code-editor {
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
+.version-container {
+  margin-top: auto;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .version-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: auto;
-  padding-top: 6px;
 }
 
 .version-text {
@@ -927,20 +933,40 @@ textarea.code-editor {
   100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
-.update-progress-container {
-  margin-top: 14px;
+.update-card {
   background: var(--surface-card);
   border: 1px solid var(--border);
-  padding: 14px;
   border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.update-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.update-card-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.update-card-pct {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-emerald);
 }
 
 .update-progress-bar {
-  height: 8px;
+  height: 6px;
   background: var(--bg);
-  border-radius: 4px;
+  border-radius: 3px;
   overflow: hidden;
-  margin: 10px 0 6px 0;
+  margin: 2px 0;
 }
 
 .update-progress-fill {
@@ -950,28 +976,25 @@ textarea.code-editor {
   transition: width 0.2s ease;
 }
 
-.btn-update-badge.downloading {
-  background: linear-gradient(135deg, #0284c7, #0369a1);
-  animation: none;
-  display: inline-flex;
-  align-items: center;
+.update-card-footer {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
 }
 
-.btn-update-badge.restart-ready {
-  background: linear-gradient(135deg, #10b981, #047857);
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.7);
-  animation: updatePulse 1.5s infinite;
+.update-card-sub {
+  font-size: 0.68rem;
+  color: var(--text-dim);
 }
 
-.spin-ring {
-  display: inline-block;
-  width: 11px;
-  height: 11px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.btn-restart-now {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.5);
+  animation: updatePulse 1.5s infinite;
+  width: 100%;
+  padding: 6px 10px;
 }
 
 @keyframes spin {

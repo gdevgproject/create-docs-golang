@@ -41,7 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
     btnStopRender: document.getElementById('btn-stop-render'),
     appVersion: document.getElementById('app-version'),
     verInfo: document.getElementById('ver-info'),
+    btnManualCheck: document.getElementById('btn-manual-check'),
     btnCheckUpdate: document.getElementById('btn-check-update'),
+    updateCard: document.getElementById('update-card'),
+    updateCardTitle: document.getElementById('update-card-title'),
+    updateCardPct: document.getElementById('update-card-pct'),
+    updateProgressFill: document.getElementById('update-progress-fill'),
+    updateCardSub: document.getElementById('update-card-sub'),
+    btnRestartNow: document.getElementById('btn-restart-now'),
     btnExportBm: document.getElementById('btn-export-bm'),
     btnImportBm: document.getElementById('btn-import-bm'),
     importFileInput: document.getElementById('import-file-input'),
@@ -84,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dom.btnStopRender) dom.btnStopRender.addEventListener('click', stopRendering);
   if (dom.btnCheckUpdate) dom.btnCheckUpdate.addEventListener('click', handleUpdateButtonClick);
   if (dom.btnManualCheck) dom.btnManualCheck.addEventListener('click', () => silentCheckUpdate(true));
+  if (dom.btnRestartNow) dom.btnRestartNow.addEventListener('click', applyUpdate);
 
   window.addEventListener('click', (e) => {
     if (e.target === dom.modal) closeModal();
@@ -248,6 +256,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Check update with GitHub API cache buster & user-controlled manual trigger
   async function silentCheckUpdate(manual = false) {
+    // If update is already downloading or ready, don't interrupt progress card
+    if (updateState !== 'idle') return;
+
     if (manual) {
       if (dom.btnManualCheck) {
         dom.btnManualCheck.disabled = true;
@@ -266,13 +277,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ver.startsWith('v')) ver = ver.substring(1);
         targetVerStr = 'v' + ver;
 
+        // Auto HIDE btn-manual-check when update is available!
         if (dom.btnManualCheck) dom.btnManualCheck.style.display = 'none';
 
         if (dom.btnCheckUpdate) {
           dom.btnCheckUpdate.textContent = `✨ Update ${targetVerStr}`;
-          dom.btnCheckUpdate.className = 'btn-update-badge';
           dom.btnCheckUpdate.style.display = 'inline-block';
-          updateState = 'idle';
         }
         if (manual) showToast(`✨ Update available: ${targetVerStr}`);
       } else {
@@ -282,10 +292,11 @@ document.addEventListener('DOMContentLoaded', () => {
           dom.btnManualCheck.disabled = false;
           dom.btnManualCheck.textContent = '🔄 Check Update';
         }
-        if (manual) showToast(`✅ You are on the latest version (${info.current_version})`);
+        if (manual) showToast(`✅ You are using the latest version (${info.current_version})`);
       }
     } catch {
       if (dom.btnManualCheck) {
+        dom.btnManualCheck.style.display = 'inline-block';
         dom.btnManualCheck.disabled = false;
         dom.btnManualCheck.textContent = '🔄 Check Update';
       }
@@ -294,21 +305,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleUpdateButtonClick() {
-    if (updateState === 'idle') {
-      if (cachedUpdateInfo && cachedUpdateInfo.download_url) {
-        startInPlaceDownload(cachedUpdateInfo.download_url);
-      }
-    } else if (updateState === 'ready') {
-      applyUpdate();
+    if (cachedUpdateInfo && cachedUpdateInfo.download_url) {
+      startInPlaceDownload(cachedUpdateInfo.download_url);
     }
   }
 
   async function startInPlaceDownload(downloadUrl) {
     updateState = 'downloading';
-    if (dom.btnCheckUpdate) {
-      dom.btnCheckUpdate.className = 'btn-update-badge downloading';
-      dom.btnCheckUpdate.innerHTML = `<span class="spin-ring"></span> 0%`;
-    }
+
+    // Hide update badge & manual check button; show update progress card!
+    if (dom.btnCheckUpdate) dom.btnCheckUpdate.style.display = 'none';
+    if (dom.btnManualCheck) dom.btnManualCheck.style.display = 'none';
+
+    if (dom.updateCard) dom.updateCard.style.display = 'flex';
+    if (dom.updateCardTitle) dom.updateCardTitle.textContent = `Downloading Update ${targetVerStr}...`;
+    if (dom.updateCardPct) dom.updateCardPct.textContent = '0%';
+    if (dom.updateProgressFill) dom.updateProgressFill.style.width = '0%';
+    if (dom.updateCardSub) dom.updateCardSub.textContent = 'Connecting to GitHub...';
+    if (dom.btnRestartNow) dom.btnRestartNow.style.display = 'none';
 
     try {
       await fetch('api/download-update', {
@@ -318,15 +332,13 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (progressPollTimer) clearInterval(progressPollTimer);
-      progressPollTimer = setInterval(pollInPlaceProgress, 400);
+      progressPollTimer = setInterval(pollInPlaceProgress, 300);
       showToast(`⬇ Downloading update ${targetVerStr} in background...`);
     } catch {
       showToast('❌ Failed to start update download');
       updateState = 'idle';
-      if (dom.btnCheckUpdate) {
-        dom.btnCheckUpdate.className = 'btn-update-badge';
-        dom.btnCheckUpdate.textContent = `✨ Update ${targetVerStr}`;
-      }
+      if (dom.updateCard) dom.updateCard.style.display = 'none';
+      if (dom.btnCheckUpdate) dom.btnCheckUpdate.style.display = 'inline-block';
     }
   }
 
@@ -336,25 +348,34 @@ document.addEventListener('DOMContentLoaded', () => {
       const p = await res.json();
 
       if (p.state === 'downloading') {
-        if (dom.btnCheckUpdate) {
-          dom.btnCheckUpdate.innerHTML = `<span class="spin-ring"></span> ${p.percent}%`;
+        const pct = p.percent || 0;
+        if (dom.updateCardPct) dom.updateCardPct.textContent = pct + '%';
+        if (dom.updateProgressFill) dom.updateProgressFill.style.width = pct + '%';
+
+        if (p.downloaded_bytes > 0 && p.total_bytes > 0) {
+          if (dom.updateCardSub) dom.updateCardSub.textContent = `${formatBytes(p.downloaded_bytes)} / ${formatBytes(p.total_bytes)}`;
+        } else {
+          if (dom.updateCardSub) dom.updateCardSub.textContent = `Downloading binary...`;
         }
       } else if (p.state === 'ready') {
         if (progressPollTimer) clearInterval(progressPollTimer);
         updateState = 'ready';
 
-        if (dom.btnCheckUpdate) {
-          dom.btnCheckUpdate.className = 'btn-update-badge restart-ready';
-          dom.btnCheckUpdate.textContent = `🚀 Restart ${targetVerStr}`;
+        if (dom.updateCardPct) dom.updateCardPct.textContent = '100%';
+        if (dom.updateProgressFill) dom.updateProgressFill.style.width = '100%';
+        if (dom.updateCardTitle) dom.updateCardTitle.textContent = `✅ Update ${targetVerStr} Ready!`;
+        if (dom.updateCardSub) dom.updateCardSub.textContent = `Downloaded. Click button below to restart.`;
+
+        if (dom.btnRestartNow) {
+          dom.btnRestartNow.style.display = 'block';
+          dom.btnRestartNow.textContent = `🚀 Restart App Now (${targetVerStr})`;
         }
-        showToast(`✅ Update ${targetVerStr} downloaded! Click button to restart.`);
+        showToast(`✅ Update ${targetVerStr} downloaded! Click button below to restart.`);
       } else if (p.state === 'error') {
         if (progressPollTimer) clearInterval(progressPollTimer);
         updateState = 'idle';
-        if (dom.btnCheckUpdate) {
-          dom.btnCheckUpdate.className = 'btn-update-badge';
-          dom.btnCheckUpdate.textContent = `✨ Update ${targetVerStr}`;
-        }
+        if (dom.updateCard) dom.updateCard.style.display = 'none';
+        if (dom.btnCheckUpdate) dom.btnCheckUpdate.style.display = 'inline-block';
         showToast('❌ Download error: ' + (p.error || 'Failed'));
       }
     } catch {
@@ -363,9 +384,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function applyUpdate() {
-    if (dom.btnCheckUpdate) {
-      dom.btnCheckUpdate.disabled = true;
-      dom.btnCheckUpdate.textContent = '⏳ Restarting...';
+    if (dom.btnRestartNow) {
+      dom.btnRestartNow.disabled = true;
+      dom.btnRestartNow.textContent = '⏳ Restarting Application...';
     }
 
     try {
