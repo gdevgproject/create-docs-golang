@@ -73,10 +73,12 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 6. Bookmark History Timelines & Import/Export Engine (`internal/bookmarks`)
+## 6. Bookmark History Timelines & Persistent Keep-Sync Panel (`internal/bookmarks`, `web`)
 
-- **Multi-Version Scan History (`History []LastResult`)**:
-  Every scan completion appends to `bm.History` sorted by `generated_at` descending. `LastResult` points to `History[0]` (the latest scan).
+- **Persistent Right History Panel (`#history-panel`)**:
+  Scan history timeline is permanently displayed in the dedicated Right Sidebar Panel (`width: 330px`).
+- **Instant 0ms State Keep-Sync**:
+  Selecting a bookmark (`selectBookmark`), finishing a scan (`complete` SSE event), deleting a history entry, or importing backups MUST instantly sync the Right History Panel, Stats Cards, and Left Bookmarks Badge counts with 0ms UI lag!
 - **Selective & Batch History Purging**:
   `DELETE /api/bookmarks/history` supports deleting individual historical scan entries by timestamp or clearing all history entries for a bookmark. Deleting a bookmark purges all history cleanly.
 - **Backup Export & Import Merge Contract**:

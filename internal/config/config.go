@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	// Version can be set at build time via -ldflags "-X codedocs/internal/config.Version=v1.7.0"
-	Version    = "v1.7.0"
+	// Version can be set at build time via -ldflags "-X codedocs/internal/config.Version=v1.7.1"
+	Version    = "v1.7.1"
 	GitHubRepo = "gdevgproject/create-docs-golang"
 )
 

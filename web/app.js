@@ -42,15 +42,13 @@ document.addEventListener('DOMContentLoaded', () => {
     appVersion: document.getElementById('app-version'),
     verInfo: document.getElementById('ver-info'),
     btnCheckUpdate: document.getElementById('btn-check-update'),
-    btnManualCheck: document.getElementById('btn-manual-check'),
     btnExportBm: document.getElementById('btn-export-bm'),
     btnImportBm: document.getElementById('btn-import-bm'),
     importFileInput: document.getElementById('import-file-input'),
-    historyModal: document.getElementById('history-modal'),
-    historyModalTitle: document.getElementById('history-modal-title'),
-    historyModalContent: document.getElementById('history-modal-content'),
-    btnCloseHistoryModal: document.getElementById('btn-close-history-modal'),
-    btnClearHistory: document.getElementById('btn-clear-history'),
+    historyPanel: document.getElementById('history-panel'),
+    hpBmName: document.getElementById('hp-bm-name'),
+    hpTimeline: document.getElementById('hp-timeline'),
+    btnHpClear: document.getElementById('btn-hp-clear'),
   };
 
   let toastTimer = null;
@@ -64,6 +62,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let targetVerStr = '';
   let isRenderingActive = false;
   let abortRendering = false;
+  let activeBookmarkId = null;
+  let allBookmarksMap = {};
 
   // Initialize
   loadVersion();
@@ -380,11 +380,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ── BOOKMARKS & HISTORY TIMELINE ──
-  let activeHistoryBm = null;
-
+  // ── BOOKMARKS & RIGHT HISTORY PANEL KEEP-SYNC ──
   function selectBookmark(bm) {
+    if (!bm) return;
+    activeBookmarkId = bm.id;
     dom.pathInput.value = bm.path;
+
+    // Highlight selected bookmark in list
+    if (dom.bmList) {
+      dom.bmList.querySelectorAll('.bm-item').forEach(el => {
+        if (el.dataset.id === bm.id) {
+          el.classList.add('selected');
+        } else {
+          el.classList.remove('selected');
+        }
+      });
+    }
 
     const lr = bm.last_result || (bm.history && bm.history.length > 0 ? bm.history[0] : null);
     if (lr) {
@@ -392,6 +403,8 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       showToast(`Loaded bookmark: ${bm.note || bm.path}`);
     }
+
+    renderRightHistoryPanel(bm);
   }
 
   function restoreScanResult(bm, lr) {
@@ -422,16 +435,79 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(`📌 Restored scan from ${lr.generated_at}`);
   }
 
+  function renderRightHistoryPanel(bm) {
+    if (!bm) {
+      dom.hpBmName.textContent = 'Select a bookmark';
+      dom.btnHpClear.style.display = 'none';
+      dom.hpTimeline.innerHTML = '<div class="bm-empty">Select a saved bookmark to view its real-time scan history timeline.</div>';
+      return;
+    }
+
+    dom.hpBmName.textContent = bm.note || bm.path;
+    const history = bm.history || (bm.last_result ? [bm.last_result] : []);
+
+    if (history.length === 0) {
+      dom.btnHpClear.style.display = 'none';
+      dom.hpTimeline.innerHTML = '<div class="bm-empty">No scan history recorded for this bookmark yet. Click "Generate Docs" to create your first scan!</div>';
+    } else {
+      dom.btnHpClear.style.display = '';
+      let html = '<div class="history-timeline">';
+      history.forEach((h, index) => {
+        html += `
+          <div class="history-card">
+            <div class="history-info">
+              <div class="history-time">
+                <span>🕒 ${escHtml(h.generated_at || 'Unknown')}</span>
+                ${index === 0 ? '<span class="history-badge">Latest Scan</span>' : ''}
+              </div>
+              <div class="history-meta">
+                <span>📦 ${h.total || 0} files</span>
+                <span>📝 ${(h.lines || 0).toLocaleString()} lines</span>
+                <span>⚡ ${(h.token_mode === 'exact' ? '' : '~') + (h.tokens || 0).toLocaleString()} tokens</span>
+                <span>💾 ${formatBytes(h.size || 0)}</span>
+                <span>⏱️ ${h.elapsed || 0}s</span>
+              </div>
+            </div>
+            <div class="history-actions">
+              <button class="btn btn-secondary sm btn-restore-item" data-idx="${index}">⚡ Restore</button>
+              <button class="btn btn-ghost sm text-danger btn-del-item" data-time="${escHtml(h.generated_at || '')}" title="Delete this scan history entry">✕</button>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+      dom.hpTimeline.innerHTML = html;
+
+      dom.hpTimeline.querySelectorAll('.btn-restore-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          restoreScanResult(bm, history[idx]);
+        });
+      });
+
+      dom.hpTimeline.querySelectorAll('.btn-del-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const timeStr = btn.dataset.time;
+          deleteHistoryItem(bm.id, timeStr);
+        });
+      });
+    }
+  }
+
   async function loadBookmarks() {
     try {
       const res = await fetch('api/bookmarks');
       const data = await res.json();
-      const items = Object.values(data).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || b.created_at.localeCompare(a.created_at));
+      allBookmarksMap = data || {};
+      const items = Object.values(allBookmarksMap).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || b.created_at.localeCompare(a.created_at));
 
       dom.bmCount.textContent = items.length;
 
       if (items.length === 0) {
         dom.bmList.innerHTML = '<div class="bm-empty">No bookmarks saved yet</div>';
+        activeBookmarkId = null;
+        renderRightHistoryPanel(null);
         return;
       }
 
@@ -440,7 +516,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const historyCount = bm.history ? bm.history.length : (bm.last_result ? 1 : 0);
 
         const div = document.createElement('div');
-        div.className = 'bm-item';
+        div.className = 'bm-item' + (bm.id === activeBookmarkId ? ' selected' : '');
+        div.dataset.id = bm.id;
         div.innerHTML = `
           <div class="bm-content">
             <div class="bm-name" title="Click edit icon to rename">
@@ -450,7 +527,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="bm-path" title="${escHtml(bm.path)}">${escHtml(bm.path)}</div>
           </div>
           <div class="bm-actions">
-            <button class="bm-btn bm-hist-btn" title="View scan history timeline">📜</button>
             <button class="bm-btn bm-move-up" title="Move Up" ${index === 0 ? 'disabled' : ''}>▲</button>
             <button class="bm-btn bm-move-down" title="Move Down" ${index === items.length - 1 ? 'disabled' : ''}>▼</button>
             <button class="bm-btn bm-rename" title="Rename bookmark">✏️</button>
@@ -462,11 +538,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!e.target.closest('.bm-actions')) {
             selectBookmark(bm);
           }
-        });
-
-        div.querySelector('.bm-hist-btn')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          showHistoryModal(bm);
         });
 
         div.querySelector('.bm-move-up')?.addEventListener('click', (e) => {
@@ -494,65 +565,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
       dom.bmList.innerHTML = '';
       dom.bmList.appendChild(frag);
+
+      // Keep sync: Re-render Right History Panel if active bookmark is selected
+      if (activeBookmarkId && allBookmarksMap[activeBookmarkId]) {
+        renderRightHistoryPanel(allBookmarksMap[activeBookmarkId]);
+      } else {
+        renderRightHistoryPanel(null);
+      }
     } catch {
       dom.bmList.innerHTML = '<div class="bm-empty">Failed to load bookmarks</div>';
     }
-  }
-
-  function showHistoryModal(bm) {
-    activeHistoryBm = bm;
-    dom.historyModalTitle.textContent = `📜 Scan History Timeline — ${bm.note || bm.path}`;
-
-    const history = bm.history || (bm.last_result ? [bm.last_result] : []);
-
-    if (history.length === 0) {
-      dom.historyModalContent.innerHTML = '<div class="bm-empty">No scan history recorded for this bookmark yet. Click "Generate Docs" to create your first scan!</div>';
-    } else {
-      let html = '<div class="history-timeline">';
-      history.forEach((h, index) => {
-        html += `
-          <div class="history-card">
-            <div class="history-info">
-              <div class="history-time">
-                <span>🕒 ${escHtml(h.generated_at || 'Unknown')}</span>
-                ${index === 0 ? '<span class="history-badge">Latest Scan</span>' : ''}
-              </div>
-              <div class="history-meta">
-                <span>📦 ${h.total || 0} files</span>
-                <span>📝 ${(h.lines || 0).toLocaleString()} lines</span>
-                <span>⚡ ${(h.token_mode === 'exact' ? '' : '~') + (h.tokens || 0).toLocaleString()} tokens</span>
-                <span>💾 ${formatBytes(h.size || 0)}</span>
-                <span>⏱️ ${h.elapsed || 0}s</span>
-              </div>
-            </div>
-            <div class="history-actions">
-              <button class="btn btn-secondary sm btn-restore-item" data-idx="${index}">⚡ Restore</button>
-              <button class="btn btn-ghost sm text-danger btn-del-item" data-time="${escHtml(h.generated_at || '')}" title="Delete this scan history entry">✕</button>
-            </div>
-          </div>
-        `;
-      });
-      html += '</div>';
-      dom.historyModalContent.innerHTML = html;
-
-      dom.historyModalContent.querySelectorAll('.btn-restore-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.dataset.idx, 10);
-          restoreScanResult(bm, history[idx]);
-          dom.historyModal.style.display = 'none';
-        });
-      });
-
-      dom.historyModalContent.querySelectorAll('.btn-del-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const timeStr = btn.dataset.time;
-          deleteHistoryItem(bm.id, timeStr);
-        });
-      });
-    }
-
-    dom.historyModal.style.display = 'flex';
   }
 
   async function deleteHistoryItem(bmId, generatedAt) {
@@ -564,15 +586,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (res.ok) {
         const resultData = await res.json();
-        const updatedBms = resultData.data || {};
-        const updatedBm = updatedBms[bmId];
-
+        allBookmarksMap = resultData.data || {};
         showToast('🗑️ History timeline entry removed');
-        loadBookmarks();
-        if (updatedBm) {
-          showHistoryModal(updatedBm);
-        } else {
-          dom.historyModal.style.display = 'none';
+        await loadBookmarks();
+        if (allBookmarksMap[bmId]) {
+          renderRightHistoryPanel(allBookmarksMap[bmId]);
         }
       }
     } catch {
@@ -581,7 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function clearBookmarkHistory(bmId) {
-    if (!bmId || !confirm('Are you sure you want to clear all history timelines for this bookmark?')) return;
+    if (!bmId || !confirm('Are you sure you want to clear all scan history for this bookmark?')) return;
 
     try {
       const res = await fetch('api/bookmarks/history', {
@@ -590,9 +608,13 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ id: bmId }),
       });
       if (res.ok) {
+        const resultData = await res.json();
+        allBookmarksMap = resultData.data || {};
         showToast('🗑️ Cleared all scan history for bookmark');
-        dom.historyModal.style.display = 'none';
-        loadBookmarks();
+        await loadBookmarks();
+        if (allBookmarksMap[bmId]) {
+          renderRightHistoryPanel(allBookmarksMap[bmId]);
+        }
       }
     } catch {
       showToast('❌ Error clearing history');
@@ -1016,8 +1038,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dom.btnExportBm) dom.btnExportBm.addEventListener('click', exportBookmarks);
   if (dom.btnImportBm) dom.btnImportBm.addEventListener('click', () => dom.importFileInput?.click());
   if (dom.importFileInput) dom.importFileInput.addEventListener('change', (e) => importBookmarks(e.target.files[0]));
-  if (dom.btnCloseHistoryModal) dom.btnCloseHistoryModal.addEventListener('click', () => dom.historyModal.style.display = 'none');
-  if (dom.btnClearHistory) dom.btnClearHistory.addEventListener('click', () => {
-    if (activeHistoryBm) clearBookmarkHistory(activeHistoryBm.id);
+  if (dom.btnHpClear) dom.btnHpClear.addEventListener('click', () => {
+    if (activeBookmarkId) clearBookmarkHistory(activeBookmarkId);
   });
 });

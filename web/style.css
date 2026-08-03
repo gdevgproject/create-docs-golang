@@ -303,9 +303,68 @@ body {
   transition: all 0.15s;
 }
 
-.bm-item:hover {
+.bm-item:hover,
+.bm-item.selected {
   border-color: var(--primary);
   background: #1e2942;
+}
+
+.bm-item.selected {
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);
+}
+
+/* ── RIGHT HISTORY PANEL ── */
+.history-panel {
+  width: 330px;
+  background: var(--surface-sidebar);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 14px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.hp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 12px;
+}
+
+.hp-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hp-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.hp-bm-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hp-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
 }
 
 .bm-content {

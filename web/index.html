@@ -176,6 +176,20 @@
     </div>
   </main>
 
+  <!-- ══ RIGHT HISTORY PANEL ══ -->
+  <aside class="history-panel" id="history-panel">
+    <div class="hp-header">
+      <div class="hp-title-group">
+        <span class="hp-title">📜 Scan History</span>
+        <span class="hp-bm-name" id="hp-bm-name">Select a bookmark</span>
+      </div>
+      <button class="btn btn-ghost btn-xs text-danger" id="btn-hp-clear" style="display:none;" title="Clear history for active bookmark">🗑️ Clear</button>
+    </div>
+    <div class="hp-content" id="hp-timeline">
+      <div class="bm-empty">Select a saved bookmark to view its real-time scan history timeline.</div>
+    </div>
+  </aside>
+
   <!-- ══ DIALOG / MODAL ══ -->
   <div class="modal-overlay" id="modal-dialog" style="display:none;">
     <div class="modal-box">
@@ -187,20 +201,6 @@
         </div>
       </div>
       <div class="modal-body" id="modal-content"></div>
-    </div>
-  </div>
-
-  <!-- ══ HISTORY TIMELINE MODAL ══ -->
-  <div class="modal-overlay" id="history-modal" style="display:none;">
-    <div class="modal-box modal-lg">
-      <div class="modal-head">
-        <span id="history-modal-title">📜 Scan History Timeline</span>
-        <div class="modal-actions">
-          <button class="btn btn-ghost sm text-danger" id="btn-clear-history">🗑️ Clear History</button>
-          <button class="btn btn-ghost sm" id="btn-close-history-modal">✕ Close</button>
-        </div>
-      </div>
-      <div class="modal-body" id="history-modal-content"></div>
     </div>
   </div>
 
