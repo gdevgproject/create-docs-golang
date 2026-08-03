@@ -87,9 +87,14 @@ This document defines the core architectural rules, safety contracts, performanc
 
 ---
 
-## 7. Verification & Testing Protocol
+## 7. Mandatory Verification & Automated Testing Protocol
 
-Before committing any code or releasing a version:
-1. Run `go test -count=1 ./...` and ensure ALL package tests pass.
-2. Run `go vet ./...` and ensure ZERO static analysis warnings.
-3. Build production binary: `go build -ldflags="-H=windowsgui -s -w -X codedocs/internal/config.Version=vX.Y.Z" -o codedocs.exe ./cmd/codedocs`.
+Before committing any code or releasing a version, ALL AI agents and developers MUST execute the following 3-step verification protocol:
+
+1. **Full Non-Cached Test Suite Execution (`go test -count=1 ./...`)**:
+   - MUST execute and pass 100% across ALL packages (`api`, `bookmarks`, `generator`, `scanner`, `tokenizer`, `updater`, `web`).
+   - `codedocs/web` automatically runs Node.js syntax validation (`node -c web/app.js`) and verifies 37+ required DOM element IDs in `web/index.html`.
+2. **Static Analysis (`go vet ./...`)**:
+   - MUST return ZERO warnings or errors.
+3. **Production Binary Compilation**:
+   - `go build -ldflags="-H=windowsgui -s -w -X codedocs/internal/config.Version=vX.Y.Z" -o codedocs.exe ./cmd/codedocs`.

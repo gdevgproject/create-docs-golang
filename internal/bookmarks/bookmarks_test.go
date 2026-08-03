@@ -1,6 +1,7 @@
 package bookmarks
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -195,5 +196,58 @@ func TestBookmarks_HistoryTimelineAndImportExport(t *testing.T) {
 	}
 	if len(cleared[impID].History) != 0 || cleared[impID].LastResult != nil {
 		t.Errorf("expected empty history after ClearHistory")
+	}
+}
+
+func TestBookmarks_LegacyMigrationAndCorruptedFile(t *testing.T) {
+	tempFile := filepath.Join(t.TempDir(), "saved_paths_legacy.json")
+
+	// Write legacy JSON with last_result but no history array
+	legacyJSON := `{
+		"bm1": {
+			"id": "bm1",
+			"path": "D:/Projects/LegacyApp",
+			"note": "Legacy App",
+			"created_at": "2026-08-01 10:00:00",
+			"last_result": {
+				"file_name": "legacy_docs.md",
+				"total": 15,
+				"lines": 450,
+				"tokens": 12000,
+				"token_mode": "exact",
+				"size": 35000,
+				"elapsed": 0.8,
+				"generated_at": "2026-08-01 10:05:00"
+			}
+		}
+	}`
+
+	if err := os.WriteFile(tempFile, []byte(legacyJSON), 0644); err != nil {
+		t.Fatalf("failed to write legacy test file: %v", err)
+	}
+
+	mgr := NewManager(tempFile)
+	bms, err := mgr.GetBookmarks()
+	if err != nil {
+		t.Fatalf("GetBookmarks failed on legacy JSON: %v", err)
+	}
+
+	bm1, exists := bms["bm1"]
+	if !exists {
+		t.Fatalf("expected bm1 to exist")
+	}
+
+	// Verify auto-migration populated History array from LastResult
+	if len(bm1.History) != 1 {
+		t.Fatalf("expected History slice of length 1 after legacy migration, got %d", len(bm1.History))
+	}
+	if bm1.History[0].FileName != "legacy_docs.md" {
+		t.Errorf("expected migrated history filename 'legacy_docs.md', got %q", bm1.History[0].FileName)
+	}
+
+	// Test Import invalid JSON bytes
+	_, err = mgr.ImportData([]byte("invalid json string"))
+	if err == nil {
+		t.Errorf("expected error on importing corrupted JSON bytes, got nil")
 	}
 }
