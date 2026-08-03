@@ -837,7 +837,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (d.speed > 0) dom.speedText.textContent = d.speed + ' files/s';
     });
 
-    es.addEventListener('complete', e => {
+    es.addEventListener('complete', async e => {
       const d = JSON.parse(e.data);
       dom.progressFill.style.width = '100%';
       dom.percentText.textContent = '100%';
