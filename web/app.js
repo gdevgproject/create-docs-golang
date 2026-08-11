@@ -768,21 +768,50 @@ document.addEventListener('DOMContentLoaded', () => {
     const path = cleanPath(dom.pathInput.value);
     if (!path) return showToast('⚠️ Please enter a project path!');
 
-    dom.modalTitle.textContent = '🌳 Directory Tree Preview';
-    dom.modalContent.textContent = 'Scanning project structure...';
-    dom.btnCopyModal.style.display = '';
-    dom.modal.style.display = 'flex';
+    dom.editor.value = '⏳ Scanning project structure and generating directory tree...';
+    dom.fileBadge.className = 'status-badge badge-progress';
+    dom.fileBadge.textContent = 'Scanning Tree...';
+    dom.virtualBanner.style.display = 'none';
+    dom.btnLoad.style.display = 'none';
+    dom.btnDownload.setAttribute('disabled', '');
+    dom.btnCopy.disabled = true;
 
     try {
       const res = await fetch(`api/structure?path=${encodeURIComponent(path)}`);
       const json = await res.json();
       if (json.status === 'success') {
-        dom.modalContent.textContent = json.data;
+        const treeText = json.data || '';
+        cachedFullText = treeText;
+        contentLoaded = true;
+        isFullRendered = true;
+        lastGeneratedFile = null;
+
+        dom.editor.value = treeText;
+        dom.fileBadge.className = 'status-badge badge-success';
+        dom.fileBadge.textContent = (json.count || 0) + ' files (Tree Only)';
+
+        dom.statsCards.style.display = 'flex';
+        dom.statFiles.textContent = (json.count || 0).toLocaleString();
+        dom.statLines.textContent = (json.lines || 0).toLocaleString();
+        dom.statTokens.textContent = '-';
+        dom.cardTokens.title = 'Tokens not calculated for tree-only mode';
+        dom.statSize.textContent = formatBytes(treeText.length);
+        dom.statTime.textContent = '0.0s';
+        dom.statDate.textContent = new Date().toLocaleString();
+
+        dom.btnCopy.disabled = false;
+        showToast('🌲 Directory Tree loaded into editor!');
       } else {
-        dom.modalContent.textContent = 'Error: ' + json.message;
+        dom.editor.value = '❌ Error generating directory tree: ' + (json.message || 'Unknown error');
+        dom.fileBadge.className = 'status-badge';
+        dom.fileBadge.textContent = 'Error';
+        showToast('❌ ' + (json.message || 'Failed to scan tree'));
       }
     } catch {
-      dom.modalContent.textContent = 'Error connecting to server.';
+      dom.editor.value = '❌ Error connecting to server.';
+      dom.fileBadge.className = 'status-badge';
+      dom.fileBadge.textContent = 'Error';
+      showToast('❌ Error connecting to server');
     }
   }
 
