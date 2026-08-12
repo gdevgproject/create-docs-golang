@@ -156,6 +156,35 @@ func (s *Server) handleDeleteBookmarkHistory(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+func (s *Server) handleRenameBookmarkHistory(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID          string `json:"id"`
+		GeneratedAt string `json:"generated_at"`
+		Label       string `json:"label"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(body.ID) == "" || strings.TrimSpace(body.GeneratedAt) == "" {
+		s.jsonError(w, "Bookmark ID and GeneratedAt timestamp are required", http.StatusBadRequest)
+		return
+	}
+
+	bms, err := s.bm.RenameHistoryItem(strings.TrimSpace(body.ID), strings.TrimSpace(body.GeneratedAt), body.Label)
+	if err != nil {
+		s.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.jsonResponse(w, map[string]any{
+		"status": "success",
+		"data":   bms,
+	})
+}
+
 func (s *Server) handleExportBookmarks(w http.ResponseWriter, r *http.Request) {
 	data, err := s.bm.ExportData()
 	if err != nil {

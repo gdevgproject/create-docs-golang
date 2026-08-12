@@ -168,6 +168,57 @@ func TestAPI_ImportExportAndHistory(t *testing.T) {
 	if wDelHist.Code != http.StatusOK {
 		t.Fatalf("delete bookmark history failed: status %d", wDelHist.Code)
 	}
+
+	// 4. Test Rename history item
+	importJSON2 := `[{"id":"2","path":"/test/rename-path","note":"Rename App","history":[{"file_name":"f2.md","total":8,"lines":200,"tokens":800,"generated_at":"2026-08-12 01:00:00"}]}]`
+	reqImp2 := httptest.NewRequest("POST", "/api/bookmarks/import", bytes.NewBufferString(importJSON2))
+	wImp2 := httptest.NewRecorder()
+	server.ServeHTTP(wImp2, reqImp2)
+
+	var impRes2 struct {
+		Status string `json:"status"`
+		Data   map[string]struct {
+			ID      string `json:"id"`
+			Path    string `json:"path"`
+			History []struct {
+				GeneratedAt string `json:"generated_at"`
+				Label       string `json:"label"`
+			} `json:"history"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(wImp2.Body).Decode(&impRes2)
+	var renameBmID string
+	for id, bm := range impRes2.Data {
+		if bm.Path == "/test/rename-path" {
+			renameBmID = id
+		}
+	}
+
+	renameBody, _ := json.Marshal(map[string]string{
+		"id":           renameBmID,
+		"generated_at": "2026-08-12 01:00:00",
+		"label":        "Release Candidate 1",
+	})
+	reqRename := httptest.NewRequest("PUT", "/api/bookmarks/history", bytes.NewBuffer(renameBody))
+	wRename := httptest.NewRecorder()
+	server.ServeHTTP(wRename, reqRename)
+
+	if wRename.Code != http.StatusOK {
+		t.Fatalf("rename bookmark history failed: status %d, body: %s", wRename.Code, wRename.Body.String())
+	}
+
+	var renameRes struct {
+		Status string `json:"status"`
+		Data   map[string]struct {
+			History []struct {
+				Label string `json:"label"`
+			} `json:"history"`
+		} `json:"data"`
+	}
+	_ = json.NewDecoder(wRename.Body).Decode(&renameRes)
+	if renameRes.Data[renameBmID].History[0].Label != "Release Candidate 1" {
+		t.Errorf("expected renamed history label 'Release Candidate 1', got: %v", renameRes)
+	}
 }
 
 func TestAPI_Structure(t *testing.T) {

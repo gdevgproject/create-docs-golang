@@ -1014,6 +1014,60 @@ textarea.code-editor {
   background: rgba(244, 63, 94, 0.15) !important;
 }
 
+/* ── RIGHT HISTORY PANEL ── */
+.history-panel {
+  width: 350px;
+  background: var(--surface-sidebar);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.hp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hp-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hp-title {
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hp-bm-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 230px;
+}
+
+.hp-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .history-timeline {
   display: flex;
   flex-direction: column;
@@ -1032,7 +1086,7 @@ textarea.code-editor {
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   transition: all 0.15s ease;
 }
 
@@ -1053,7 +1107,7 @@ textarea.code-editor {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  overflow: hidden;
+  flex: 1;
 }
 
 .history-time {
@@ -1061,6 +1115,23 @@ textarea.code-editor {
   font-size: 0.8rem;
   color: var(--text-main);
   white-space: nowrap;
+}
+
+.history-label {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 145px;
+}
+
+.history-sub-time {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  margin-top: -2px;
 }
 
 .history-badge {
@@ -1071,6 +1142,7 @@ textarea.code-editor {
   font-size: 0.65rem;
   font-weight: 700;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .history-actions {
@@ -1078,6 +1150,14 @@ textarea.code-editor {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.btn-rename-item {
+  color: var(--text-muted);
+}
+
+.btn-rename-item:hover {
+  color: var(--primary);
 }
 
 .history-tags-grid {

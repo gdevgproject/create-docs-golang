@@ -58,6 +58,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET "+bp+"/api/bookmarks", s.handleGetBookmarks)
 	s.mux.HandleFunc("POST "+bp+"/api/bookmarks", s.handleSaveBookmark)
 	s.mux.HandleFunc("PUT "+bp+"/api/bookmarks", s.handleUpdateBookmark)
+	s.mux.HandleFunc("PUT "+bp+"/api/bookmarks/history", s.handleRenameBookmarkHistory)
 	s.mux.HandleFunc("DELETE "+bp+"/api/bookmarks", s.handleDeleteBookmark)
 	s.mux.HandleFunc("DELETE "+bp+"/api/bookmarks/history", s.handleDeleteBookmarkHistory)
 	s.mux.HandleFunc("GET "+bp+"/api/bookmarks/export", s.handleExportBookmarks)
@@ -113,6 +114,8 @@ func (s *Server) handleLegacyQueryRoute(w http.ResponseWriter, r *http.Request) 
 		s.handleSaveBookmark(w, r)
 	case "delete_bookmark":
 		s.handleDeleteBookmark(w, r)
+	case "rename_history":
+		s.handleRenameBookmarkHistory(w, r)
 	case "get_structure":
 		s.handleGetStructure(w, r)
 	case "get_content":

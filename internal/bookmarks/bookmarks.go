@@ -14,6 +14,7 @@ import (
 )
 
 type LastResult struct {
+	Label       string  `json:"label,omitempty"`
 	FileName    string  `json:"file_name"`
 	TotalFiles  int     `json:"total"`
 	TotalLines  int64   `json:"lines"`
@@ -201,6 +202,47 @@ func (m *Manager) DeleteHistoryItem(bookmarkID, generatedAt string) (map[string]
 	} else {
 		bm.LastResult = nil
 	}
+	bookmarks[bookmarkID] = bm
+
+	if err := m.saveUnlocked(bookmarks); err != nil {
+		return nil, err
+	}
+
+	return bookmarks, nil
+}
+
+// RenameHistoryItem updates the custom label/name of a specific scan history entry
+func (m *Manager) RenameHistoryItem(bookmarkID, generatedAt, label string) (map[string]Bookmark, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	bookmarks := m.loadUnlocked()
+	bm, exists := bookmarks[bookmarkID]
+	if !exists {
+		return nil, fmt.Errorf("bookmark not found: %s", bookmarkID)
+	}
+
+	cleanLabel := strings.TrimSpace(label)
+	targetTime := strings.TrimSpace(generatedAt)
+	found := false
+
+	for i := range bm.History {
+		if strings.TrimSpace(bm.History[i].GeneratedAt) == targetTime {
+			bm.History[i].Label = cleanLabel
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("history item with timestamp %q not found", generatedAt)
+	}
+
+	// Also sync LastResult if it matches the renamed item
+	if bm.LastResult != nil && strings.TrimSpace(bm.LastResult.GeneratedAt) == targetTime {
+		bm.LastResult.Label = cleanLabel
+	}
+
 	bookmarks[bookmarkID] = bm
 
 	if err := m.saveUnlocked(bookmarks); err != nil {

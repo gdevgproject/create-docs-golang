@@ -480,18 +480,26 @@ document.addEventListener('DOMContentLoaded', () => {
       let html = '<div class="history-timeline">';
       history.forEach((h, index) => {
         const timeStr = cleanTimeDisplay(h.generated_at);
+        const hasLabel = Boolean(h.label && h.label.trim());
+        const displayLabel = hasLabel ? escHtml(h.label.trim()) : '';
+
         html += `
-          <div class="history-card">
+          <div class="history-card" data-time="${escHtml(h.generated_at || '')}">
             <div class="history-card-top">
               <div class="history-time-group">
-                <span class="history-time">🕒 ${escHtml(timeStr)}</span>
+                ${hasLabel 
+                  ? `<span class="history-label" title="${displayLabel}">🏷️ ${displayLabel}</span>` 
+                  : `<span class="history-time">🕒 ${escHtml(timeStr)}</span>`
+                }
                 ${index === 0 ? '<span class="history-badge">Latest</span>' : ''}
               </div>
               <div class="history-actions">
+                <button class="btn btn-ghost btn-xs btn-rename-item" data-idx="${index}" data-time="${escHtml(h.generated_at || '')}" data-label="${escHtml(h.label || '')}" title="Rename / label this scan">✏️</button>
                 <button class="btn btn-secondary btn-xs btn-restore-item" data-idx="${index}" title="Restore scan result">⚡ Restore</button>
                 <button class="btn btn-ghost btn-xs text-danger btn-del-item" data-time="${escHtml(h.generated_at || '')}" title="Delete history entry">✕</button>
               </div>
             </div>
+            ${hasLabel ? `<div class="history-sub-time">🕒 ${escHtml(timeStr)}</div>` : ''}
             <div class="history-tags-grid">
               <span class="history-tag" title="Files">📦 ${(h.total || 0).toLocaleString()} files</span>
               <span class="history-tag" title="Lines">📝 ${(h.lines || 0).toLocaleString()} lines</span>
@@ -504,6 +512,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       html += '</div>';
       dom.hpTimeline.innerHTML = html;
+
+      dom.hpTimeline.querySelectorAll('.btn-rename-item').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const timeStr = btn.dataset.time;
+          const currentLabel = btn.dataset.label || '';
+          renameHistoryItem(bm.id, timeStr, currentLabel);
+        });
+      });
 
       dom.hpTimeline.querySelectorAll('.btn-restore-item').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -519,6 +536,36 @@ document.addEventListener('DOMContentLoaded', () => {
           deleteHistoryItem(bm.id, timeStr);
         });
       });
+    }
+  }
+
+  async function renameHistoryItem(bmId, generatedAt, currentLabel) {
+    const newLabel = prompt('Enter a custom name/label for this scan timeline entry:', currentLabel);
+    if (newLabel === null) return; // User cancelled
+
+    try {
+      const res = await fetch('api/bookmarks/history', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: bmId,
+          generated_at: generatedAt,
+          label: newLabel.trim()
+        })
+      });
+      const json = await res.json();
+      if (json.status === 'success') {
+        allBookmarksMap = json.data || {};
+        renderBookmarks(allBookmarksMap);
+        if (activeBookmarkId && allBookmarksMap[activeBookmarkId]) {
+          renderRightHistoryPanel(allBookmarksMap[activeBookmarkId]);
+        }
+        showToast(newLabel.trim() ? `🏷️ Renamed scan to "${newLabel.trim()}"` : '🏷️ Custom name cleared');
+      } else {
+        showToast('❌ Failed to rename: ' + (json.message || 'Error'));
+      }
+    } catch {
+      showToast('❌ Error connecting to server');
     }
   }
 

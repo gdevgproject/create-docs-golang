@@ -251,3 +251,75 @@ func TestBookmarks_LegacyMigrationAndCorruptedFile(t *testing.T) {
 		t.Errorf("expected error on importing corrupted JSON bytes, got nil")
 	}
 }
+
+func TestBookmarks_RenameHistoryItem(t *testing.T) {
+	tempFile := filepath.Join(t.TempDir(), "saved_paths_rename.json")
+	mgr := NewManager(tempFile)
+
+	bms, err := mgr.SaveBookmark("/projects/rename-app", "Rename App")
+	if err != nil {
+		t.Fatalf("SaveBookmark failed: %v", err)
+	}
+
+	var bmID string
+	for id := range bms {
+		bmID = id
+	}
+
+	res1 := LastResult{FileName: "res1.md", TotalFiles: 10, GeneratedAt: "2026-08-12 01:00:00"}
+	res2 := LastResult{FileName: "res2.md", TotalFiles: 20, GeneratedAt: "2026-08-12 02:00:00"}
+
+	mgr.SaveHistoryResult("/projects/rename-app", res1)
+	mgr.SaveHistoryResult("/projects/rename-app", res2)
+
+	// Test Renaming res2 (Latest scan)
+	updated, err := mgr.RenameHistoryItem(bmID, "2026-08-12 02:00:00", "Sprint 1 Release")
+	if err != nil {
+		t.Fatalf("RenameHistoryItem failed: %v", err)
+	}
+
+	bm := updated[bmID]
+	if bm.History[0].Label != "Sprint 1 Release" {
+		t.Errorf("expected History[0] label 'Sprint 1 Release', got %q", bm.History[0].Label)
+	}
+	if bm.LastResult == nil || bm.LastResult.Label != "Sprint 1 Release" {
+		t.Errorf("expected LastResult label to be synced to 'Sprint 1 Release', got %+v", bm.LastResult)
+	}
+
+	// Test Renaming res1 (Past scan)
+	updated2, err := mgr.RenameHistoryItem(bmID, "2026-08-12 01:00:00", "Initial Baseline")
+	if err != nil {
+		t.Fatalf("RenameHistoryItem for past scan failed: %v", err)
+	}
+	if updated2[bmID].History[1].Label != "Initial Baseline" {
+		t.Errorf("expected History[1] label 'Initial Baseline', got %q", updated2[bmID].History[1].Label)
+	}
+
+	// Test Error on non-existent timestamp
+	_, err = mgr.RenameHistoryItem(bmID, "1999-01-01 00:00:00", "Invalid")
+	if err == nil {
+		t.Errorf("expected error when renaming non-existent timestamp, got nil")
+	}
+
+	// Test Export and Import preserves custom labels
+	exportBytes, err := mgr.ExportData()
+	if err != nil {
+		t.Fatalf("ExportData failed: %v", err)
+	}
+
+	tempFile2 := filepath.Join(t.TempDir(), "saved_paths_imported.json")
+	mgr2 := NewManager(tempFile2)
+	imported, err := mgr2.ImportData(exportBytes)
+	if err != nil {
+		t.Fatalf("ImportData failed: %v", err)
+	}
+
+	var impID string
+	for id := range imported {
+		impID = id
+	}
+	impBm := imported[impID]
+	if len(impBm.History) != 2 || impBm.History[0].Label != "Sprint 1 Release" || impBm.History[1].Label != "Initial Baseline" {
+		t.Errorf("imported history labels mismatch: %+v", impBm.History)
+	}
+}
