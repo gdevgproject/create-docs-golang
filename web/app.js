@@ -491,7 +491,6 @@ document.addEventListener('DOMContentLoaded', () => {
                   ? `<span class="history-label" title="${displayLabel}">🏷️ ${displayLabel}</span>` 
                   : `<span class="history-time">🕒 ${escHtml(timeStr)}</span>`
                 }
-                ${index === 0 ? '<span class="history-badge">Latest</span>' : ''}
               </div>
               <div class="history-actions">
                 <button class="btn btn-ghost btn-xs btn-rename-item" data-idx="${index}" data-time="${escHtml(h.generated_at || '')}" data-label="${escHtml(h.label || '')}" title="Rename / label this scan">✏️</button>
@@ -553,10 +552,17 @@ document.addEventListener('DOMContentLoaded', () => {
           label: newLabel.trim()
         })
       });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        showToast('❌ Failed to rename: ' + (errJson.message || 'Error ' + res.status));
+        return;
+      }
+
       const json = await res.json();
       if (json.status === 'success') {
         allBookmarksMap = json.data || {};
-        renderBookmarks(allBookmarksMap);
+        await loadBookmarks();
         if (activeBookmarkId && allBookmarksMap[activeBookmarkId]) {
           renderRightHistoryPanel(allBookmarksMap[activeBookmarkId]);
         }

@@ -1100,6 +1100,7 @@ textarea.code-editor {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
 .history-time-group {
@@ -1108,6 +1109,7 @@ textarea.code-editor {
   gap: 6px;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .history-time {
@@ -1115,6 +1117,8 @@ textarea.code-editor {
   font-size: 0.8rem;
   color: var(--text-main);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .history-label {
@@ -1124,7 +1128,8 @@ textarea.code-editor {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 145px;
+  flex: 1;
+  min-width: 0;
 }
 
 .history-sub-time {
@@ -1132,17 +1137,6 @@ textarea.code-editor {
   color: var(--text-dim);
   font-family: var(--font-mono);
   margin-top: -2px;
-}
-
-.history-badge {
-  background: rgba(56, 189, 248, 0.15);
-  color: var(--primary);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .history-actions {
