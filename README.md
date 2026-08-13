@@ -1,68 +1,85 @@
-# CodePulse AI — Next-Gen AI Code Context Engine
+# CodeDocs
 
-> A high-performance, single-binary codebase documentation & AI context generator written in **Golang**. Automatically scans your codebase, formats source code with XML CDATA enclosures, counts exact GPT tokens (`o200k_base` tiktoken BPE), and streams real-time progress to a sleek developer web UI with native Win32 Immersive Dark Mode.
+CodeDocs is a local-first desktop app that turns a source tree into compact AI-ready context. It scans with `.gitignore` support, counts `o200k_base` tokens, generates ordered XML or text output, and keeps project history on the local machine.
 
----
+## Highlights
 
-## ✨ Key Features & Architectural Highlights
+- Native Windows window powered by WebView2; no installer or background service.
+- Bounded concurrent scanning, token counting, and output generation.
+- Streaming generation and range-based previews for large repositories.
+- Local, atomic, recoverable bookmark history.
+- Verified in-app updates with architecture checks and automatic rollback.
+- Responsive three-pane workspace that collapses into drawers on small windows.
 
-- ⚡ **Extreme Golang Concurrency**: Multi-threaded parallel file processing using Go worker pools with OS CPU reservation (`runtime.NumCPU() - 1`), delivering **1,500+ files/sec throughput** without freezing OS responsiveness.
-- 🎨 **100% Native Win32 Immersive Dark Mode**: Windows desktop window uses DWM dark titlebar API to seamlessly match the sleek developer theme.
-- 🧮 **Instant Token Counter Tool**: Built-in interactive modal to paste any text, prompt, or XML snippet for instant exact `o200k_base` BPE token calculation.
-- 🌐 **Universal Multi-Ecosystem Exclusion Engine**: Out-of-the-box support for Node.js/Next/React, Java/Spring/Kotlin, Python, Go, C#/.NET, PHP/Laravel, Rust, DevOps, and Game Engines (Unity, Unreal Engine, Steam Modding). Automatically parses project `.gitignore` rules.
-- 🔄 **Non-Blocking In-Place Auto-Update System**: One-click GitHub Releases update downloading in the background with progress indicator and atomic 1-click application restart.
-- 📄 **High-Performance Non-Blocking Preview**: Instant 300KB fast preview with zero UI lag, controllable async chunk rendering, and instant **"⏸ Stop Rendering"** cancellation.
-- 💾 **Thread-Safe Project Bookmarks**: Persist frequently scanned project paths locally.
+## Install on Windows
 
----
+Download the matching binary from the [latest release](https://github.com/gdevgproject/create-docs-golang/releases/latest):
 
-## 💻 System Requirements
+- `codedocs_windows_amd64.exe` for most Windows PCs.
+- `codedocs_windows_arm64.exe` for native Windows on ARM.
 
-- **Precompiled Binary**: 100% self-contained standalone `.exe` / binary. Zero runtime dependencies.
-- **Building from Source**: Go `1.22+` (Tested on Go `1.26`).
+Run the executable directly. Microsoft Edge WebView2 Runtime is included with current Windows 10/11 installations; the app shows a clear error if it must be installed or repaired.
 
----
+Existing v1.7.8 installations can update in place. Release asset names and the legacy update API remain stable so older builds can move forward normally.
 
-## 🛠️ Building from Source
+## Use
 
-### Quick Build (Windows Desktop GUI)
-```bash
-go build -ldflags="-H=windowsgui -s -w -X codedocs/internal/config.Version=v1.4.0" -o CodePulse.exe ./cmd/codedocs
+1. Choose or paste a project directory.
+2. Select **Context** to include content or **Stats** for metadata only.
+3. Generate, then copy, save, or download the result.
+
+Bookmarks, preferences, tokenizer data, and generated output stay local. By default, the HTTP server binds only to `127.0.0.1` and rejects non-loopback browser requests.
+
+## Command line
+
+```text
+codedocs.exe --port 8080 --host 127.0.0.1
 ```
 
-### Using Makefile
+Useful options:
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `--port` | `8080` | Preferred local port; the app can select another free port. |
+| `--host` | `127.0.0.1` | HTTP bind address. Desktop mode requires loopback. |
+| `--max-size` | `10485760` | Maximum source file size included in output. |
+| `--workers` | CPU-aware | Bounded scan/generation concurrency. |
+| `--temp-dir` | `./temp_docs` | Generated document directory. |
+| `--cache-dir` | OS user cache | Tokenizer and WebView2 cache. |
+| `--bookmark-file` | OS user config | Local history JSON file. |
+| `--open-browser` | `true` | Open a browser on platforms without the native window. |
+
+## Develop
+
+The module declares the required Go toolchain in `go.mod`.
+
 ```bash
-make build       # Build binary for host OS
-make test        # Run unit test suite
-make vet         # Run static analysis
-make build-all   # Cross-compile for Windows, macOS, Linux (amd64 + arm64)
+go test ./...
+go vet ./...
+go run ./cmd/codedocs
 ```
 
----
+On Windows, build a versioned desktop executable with:
 
-## 🚀 Command-Line Flags Reference
+```powershell
+./scripts/build-windows.ps1 -Version v1.8.0 -Architecture amd64
+```
 
-| Flag | Default | Description |
-| :--- | :--- | :--- |
-| `--port` | `8080` | Port for the HTTP server to listen on |
-| `--host` | `0.0.0.0` | Host IP address binding |
-| `--workers` | `NumCPU - 1` | Worker pool size (preserves 1 CPU core for OS) |
-| `--max-size` | `10485760` (10MB) | Max file size in bytes to include content |
-| `--temp-dir` | `./temp_docs` | Directory where generated `.md` docs are saved |
-| `--cache-dir` | OS User Cache Dir | Directory used to cache `o200k_base.tiktoken` vocab |
-| `--bookmark-file` | OS User Config Dir | Path to `saved_paths.json` for bookmarks |
+The script regenerates the architecture-specific icon, manifest, and version resource using pinned `go-winres` v0.3.3.
 
----
+## Releases and updates
 
-## 📊 Feature Comparison
+Tags matching `v*` run the release pipeline. Every release keeps the four historical asset names, publishes `SHA256SUMS.txt`, and creates GitHub build-provenance attestations. The updater additionally verifies GitHub's SHA-256 digest, expected size, executable format, OS, and CPU architecture before restart.
 
-| Feature | Legacy PHP Scripts | CodePulse AI (Go Rewrite) |
-| :--- | :---: | :---: |
-| Execution Architecture | ❌ PHP CLI Runtime required | ✅ **Single Compiled Standalone Binary** |
-| Multithreaded Worker Pool | ❌ Single-threaded | ✅ **Parallel Workers + CPU Safety** |
-| `o200k_base` Tiktoken BPE | ✅ (Pure PHP) | ✅ **Native Go BPE + FNV-1a Hash Cache** |
-| Native Win32 Titlebar | ❌ White Browser Frame | ✅ **DWM Immersive Dark Titlebar** |
-| In-Place Auto Update | ❌ Manual download | ✅ **Background Download & 1-Click Swap** |
-| Universal Exclusion Engine | ❌ Basic array | ✅ **All Stacks + Game Engines + `.gitignore`** |
-| Instant Token Counter | ❌ None | ✅ **Interactive Paste Token Calculator** |
-| Stop/Cancel Async Rendering | ❌ Infinite Freeze | ✅ **0ms Instant Cancellation Control** |
+See [ARCHITECTURE.md](ARCHITECTURE.md), [UPGRADING.md](UPGRADING.md), and [CHANGELOG.md](CHANGELOG.md) before changing lifecycle, persistence, or update code.
+
+## Docker
+
+The container is an optional headless mode and intentionally listens on all container interfaces:
+
+```bash
+docker build --build-arg VERSION=dev -t codedocs .
+docker run --rm -p 8080:8080 -v codedocs-data:/data codedocs
+```
+
+Open `http://127.0.0.1:8080`. Do not expose this local file-reading tool directly to an untrusted network.

@@ -20,7 +20,7 @@ var (
 const (
 	dwmwaUseImmersiveDarkMode    = 20
 	dwmwaUseImmersiveDarkModeOld = 19
-	appIconResourceID            = 2
+	appIconResourceID            = 1
 	defaultWindowWidth           = 1440
 	defaultWindowHeight          = 900
 	minimumWindowWidth           = 760

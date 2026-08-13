@@ -1,69 +1,47 @@
-# ==============================================================================
-# Codebase-to-Docs Generator (codedocs) Makefile
-# ==============================================================================
+BINARY := codedocs
+DIST := dist
+CMD := ./cmd/codedocs
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X codedocs/internal/config.Version=$(VERSION)
 
-BINARY_NAME=codedocs
-DIST_DIR=dist
-CMD_PATH=./cmd/codedocs
+.PHONY: all build test test-race vet run windows-resources windows build-all clean release help
 
-.PHONY: all build build-all test vet run clean help
+all: test vet build
 
-all: test build
-
-## build: Build single binary for host OS
 build:
-	@echo "🔨 Building $(BINARY_NAME)..."
-	go build -ldflags="-H=windowsgui -s -w" -o $(BINARY_NAME).exe $(CMD_PATH)
-	@echo "✅ Build complete: ./$(BINARY_NAME).exe"
+	go build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY) $(CMD)
 
-## build-all: Cross-compile binaries for Windows, macOS, and Linux (amd64 + arm64)
-build-all: clean
-	@echo "🚀 Cross-compiling for all target platforms..."
-	@mkdir -p $(DIST_DIR)
-	
-	# Windows
-	GOOS=windows GOARCH=amd64 go build -ldflags="-H=windowsgui -s -w" -o $(DIST_DIR)/$(BINARY_NAME)_windows_amd64.exe $(CMD_PATH)
-	GOOS=windows GOARCH=arm64 go build -ldflags="-H=windowsgui -s -w" -o $(DIST_DIR)/$(BINARY_NAME)_windows_arm64.exe $(CMD_PATH)
-	
-	# macOS (Darwin)
-	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)_darwin_amd64 $(CMD_PATH)
-	GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)_darwin_arm64 $(CMD_PATH)
-	
-	# Linux
-	GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)_linux_amd64 $(CMD_PATH)
-	GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o $(DIST_DIR)/$(BINARY_NAME)_linux_arm64 $(CMD_PATH)
-	
-	@echo "✅ All binaries compiled in $(DIST_DIR)/"
-
-## test: Run unit tests
 test:
-	@echo "🧪 Running unit tests..."
-	go test -v ./...
+	go test -count=1 ./...
 
-## vet: Run go vet static analysis
+test-race:
+	go test -race -count=1 ./...
+
 vet:
-	@echo "🔍 Running go vet..."
 	go vet ./...
 
-## run: Run application locally
 run:
-	go run $(CMD_PATH)
+	go run $(CMD)
 
-## clean: Remove build artifacts and temp files
+windows-resources:
+	go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64,arm64 --out cmd/codedocs/rsrc
+
+windows: windows-resources
+	mkdir -p $(DIST)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-H=windowsgui $(LDFLAGS)" -o $(DIST)/codedocs_windows_amd64.exe $(CMD)
+	CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="-H=windowsgui $(LDFLAGS)" -o $(DIST)/codedocs_windows_arm64.exe $(CMD)
+
+build-all: windows
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$(LDFLAGS)" -o $(DIST)/codedocs_darwin_arm64 $(CMD)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$(LDFLAGS)" -o $(DIST)/codedocs_linux_amd64 $(CMD)
+
 clean:
-	@echo "🧹 Cleaning build artifacts..."
-	@rm -rf $(BINARY_NAME) $(BINARY_NAME).exe $(DIST_DIR) temp_docs
-	@echo "✅ Cleaned."
+	rm -rf $(BINARY) $(BINARY).exe $(DIST)
 
-## release: Tag and publish a new GitHub Release (e.g. make release V=v1.0.1)
 release:
-	@if [ -z "$(V)" ]; then echo "❌ Error: Please specify version, e.g. make release V=v1.0.1"; exit 1; fi
-	@echo "🚀 Creating git release tag $(V)..."
-	git tag $(V)
-	git push origin $(V)
-	@echo "✅ Release tag $(V) pushed! GitHub Actions is building and uploading release binaries."
+	@test -n "$(V)" || (echo "Usage: make release V=v1.8.0" && exit 1)
+	git tag -a "$(V)" -m "CodeDocs $(V)"
+	git push origin "$(V)"
 
-## help: Show Makefile target help
 help:
-	@echo "Available Makefile targets:"
-	@grep -E '^## ' $(MAKEFILE_LIST) | sed -e 's/## //'
+	@echo "make test | test-race | vet | build | windows | build-all | release V=vX.Y.Z"

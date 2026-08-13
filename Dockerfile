@@ -1,38 +1,30 @@
-# ==============================================================================
-# Multi-stage Dockerfile for Codebase-to-Docs Generator (codedocs)
-# ==============================================================================
+FROM golang:1.26.4-alpine AS builder
 
-# --- Stage 1: Build stage ---
-FROM golang:1.24-alpine AS builder
-
-WORKDIR /app
-
-# Install ca-certificates and git for dependency downloading
+ARG VERSION=dev
+WORKDIR /src
 RUN apk add --no-cache ca-certificates git
-
-# Download dependencies
 COPY go.mod go.sum ./
 RUN go mod download
-
-# Copy source files
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags="-s -w -X codedocs/internal/config.Version=${VERSION}" \
+    -o /out/codedocs ./cmd/codedocs
 
-# Build static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o codedocs ./cmd/codedocs
+FROM alpine:3.23
 
-# --- Stage 2: Minimal runtime stage ---
-FROM alpine:latest
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S codedocs \
+    && adduser -S -G codedocs -h /data codedocs \
+    && mkdir -p /data/output /data/cache /data/config \
+    && chown -R codedocs:codedocs /data
 
-WORKDIR /app
+COPY --from=builder /out/codedocs /usr/local/bin/codedocs
 
-RUN apk add --no-cache ca-certificates tzdata
-
-COPY --from=builder /app/codedocs /app/codedocs
-
-# Create temp and cache directories
-RUN mkdir -p /app/temp_docs /root/.cache/codedocs
-
+USER codedocs
+WORKDIR /data
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/api/ping || exit 1
 
-ENTRYPOINT ["/app/codedocs"]
-CMD ["--port", "8080", "--host", "0.0.0.0"]
+ENTRYPOINT ["/usr/local/bin/codedocs"]
+CMD ["--port", "8080", "--host", "0.0.0.0", "--open-browser=false", "--temp-dir", "/data/output", "--cache-dir", "/data/cache", "--bookmark-file", "/data/config/saved_paths.json"]
