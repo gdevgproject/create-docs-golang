@@ -62,7 +62,7 @@ go run ./cmd/codedocs
 On Windows, build a versioned desktop executable with:
 
 ```powershell
-./scripts/build-windows.ps1 -Version v1.8.0 -Architecture amd64
+./scripts/build-windows.ps1 -Version v1.8.1 -Architecture amd64
 ```
 
 The script regenerates the architecture-specific icon, manifest, and version resource using pinned `go-winres` v0.3.3.

@@ -4,6 +4,12 @@ All notable changes are documented here. CodeDocs follows semantic versioning.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-08-13
+
+### Changed
+
+- Increased desktop typography, compact control labels, editor text, and action icon scale for clearer Windows readability.
+
 ## [1.8.0] - 2026-08-13
 
 ### Added
@@ -29,5 +35,6 @@ All notable changes are documented here. CodeDocs follows semantic versioning.
 - Binary integrity, executable format, and release ownership validation before applying an update.
 - Shutdown races, duplicate saved paths, corrupt history handling, large-preview memory pressure, and titlebar icon ID mismatch.
 
-[Unreleased]: https://github.com/gdevgproject/create-docs-golang/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/gdevgproject/create-docs-golang/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/gdevgproject/create-docs-golang/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/gdevgproject/create-docs-golang/compare/v1.7.8...v1.8.0

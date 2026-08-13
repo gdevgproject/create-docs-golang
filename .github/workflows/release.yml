@@ -95,7 +95,7 @@ jobs:
         shell: bash
         run: |
           resource_version="${{ steps.version.outputs.resource_version }}"
-          sed -i "s/1\.8\.0\.0/${resource_version}/g" winres/winres.json
+          sed -i "s/1\.8\.1\.0/${resource_version}/g" winres/winres.json
           rm -f "cmd/codedocs/rsrc_windows_${{ matrix.goarch }}.syso"
           go run github.com/tc-hib/go-winres@v0.3.3 make \
             --in winres/winres.json \

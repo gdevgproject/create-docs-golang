@@ -24,11 +24,14 @@
   --mono: "Cascadia Code", "Cascadia Mono", Consolas, monospace;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   height: 100%;
   margin: 0;
@@ -39,15 +42,18 @@ body {
   background: var(--canvas);
   color: var(--text);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 
-button, input, textarea {
+button,
+input,
+textarea {
   font: inherit;
 }
 
-button, a {
+button,
+a {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -77,8 +83,12 @@ textarea:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-columns: clamp(260px, 19vw, 294px) minmax(380px, 1fr) clamp(286px, 21vw, 330px);
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-columns: clamp(260px, 19vw, 294px) minmax(380px, 1fr) clamp(
+      286px,
+      21vw,
+      330px
+    );
+  grid-template-rows: 68px minmax(0, 1fr);
   grid-template-areas:
     "topbar topbar topbar"
     "projects workspace history";
@@ -107,8 +117,8 @@ textarea:focus-visible {
 }
 
 .brand-icon {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 9px;
   object-fit: cover;
   box-shadow: 0 0 20px rgba(32, 222, 239, 0.14);
@@ -122,26 +132,28 @@ textarea:focus-visible {
 }
 
 .brand-copy strong {
-  font-size: 15px;
+  font-size: 16px;
   letter-spacing: -0.02em;
 }
 
 .brand-copy span {
   color: var(--blue);
-  font: 600 10px var(--mono);
+  font: 600 11px var(--mono);
 }
 
 .path-command {
   display: flex;
   align-items: center;
   min-width: 0;
-  height: 40px;
+  height: 42px;
   padding: 0 10px;
   background: var(--panel-raised);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.02);
-  transition: border-color 140ms ease, box-shadow 140ms ease;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .path-command:focus-within {
@@ -153,7 +165,7 @@ textarea:focus-visible {
   flex: none;
   margin-right: 8px;
   color: var(--blue);
-  font: 700 13px var(--mono);
+  font: 700 14px var(--mono);
 }
 
 .path-input {
@@ -163,7 +175,7 @@ textarea:focus-visible {
   background: transparent;
   border: 0;
   outline: 0;
-  font: 12px var(--mono);
+  font: 13px var(--mono);
 }
 
 .path-input::placeholder {
@@ -178,7 +190,7 @@ kbd {
   background: var(--canvas);
   border: 1px solid var(--border);
   border-radius: 5px;
-  font: 10px var(--mono);
+  font: 11px var(--mono);
 }
 
 .top-actions,
@@ -199,7 +211,11 @@ kbd {
   border: 0;
   cursor: pointer;
   user-select: none;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
 }
 
 .button {
@@ -249,9 +265,9 @@ kbd {
 }
 
 .button.compact {
-  min-height: 31px;
+  min-height: 33px;
   padding: 0 11px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .button:disabled,
@@ -266,14 +282,14 @@ kbd {
 .icon-button {
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   flex: none;
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .icon-button:hover {
@@ -283,16 +299,16 @@ kbd {
 }
 
 .icon-button.tiny {
-  width: 26px;
-  height: 26px;
-  font-size: 15px;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
 }
 
 .text-button {
   padding: 3px 5px;
   color: var(--muted);
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -345,7 +361,7 @@ kbd {
   margin: 2px 0 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -353,7 +369,7 @@ kbd {
 
 .eyebrow {
   color: var(--dim);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 750;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -391,10 +407,10 @@ kbd {
 .segmented span {
   display: grid;
   place-items: center;
-  height: 29px;
+  height: 31px;
   color: var(--muted);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -411,7 +427,7 @@ kbd {
 .section-hint {
   margin: 8px 2px 0;
   color: var(--dim);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1.45;
 }
 
@@ -444,7 +460,7 @@ kbd {
 .section-title {
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -460,7 +476,7 @@ kbd {
   color: var(--blue);
   background: var(--blue-soft);
   border-radius: 999px;
-  font: 700 9px var(--mono);
+  font: 700 10px var(--mono);
 }
 
 .save-row {
@@ -470,7 +486,7 @@ kbd {
 
 .control {
   width: 100%;
-  height: 35px;
+  height: 37px;
   min-width: 0;
   padding: 0 10px;
   color: var(--text);
@@ -548,7 +564,7 @@ kbd {
 
 .bookmark-name {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 680;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -558,7 +574,7 @@ kbd {
   margin-top: 3px;
   overflow: hidden;
   color: var(--dim);
-  font: 9.5px var(--mono);
+  font: 10.5px var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -578,8 +594,8 @@ kbd {
 
 .bookmark-action {
   display: grid;
-  width: 24px;
-  height: 25px;
+  width: 26px;
+  height: 27px;
   place-items: center;
   padding: 0;
   color: var(--dim);
@@ -587,7 +603,7 @@ kbd {
   border: 0;
   border-radius: 5px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .bookmark-action:hover:not(:disabled) {
@@ -608,7 +624,7 @@ kbd {
   margin: auto;
   padding: 24px 12px;
   color: var(--dim);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -625,12 +641,12 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 34px;
+  height: 36px;
   color: var(--muted);
   background: var(--panel-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -641,7 +657,7 @@ kbd {
 
 .tool-icon {
   color: var(--blue);
-  font: 700 13px var(--mono);
+  font: 700 14px var(--mono);
 }
 
 .update-dock {
@@ -657,7 +673,7 @@ kbd {
   min-width: 0;
   overflow: hidden;
   color: var(--dim);
-  font: 10px var(--mono);
+  font: 11px var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -667,7 +683,7 @@ kbd {
   color: #062117;
   background: var(--green);
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -681,7 +697,7 @@ kbd {
 
 .update-card-head strong,
 .update-card-head span {
-  font-size: 10.5px;
+  font-size: 11.5px;
 }
 
 .update-card-head span {
@@ -712,7 +728,7 @@ kbd {
 .update-card p {
   margin: 0 0 6px;
   color: var(--dim);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -763,7 +779,7 @@ kbd {
 
 .output-title-row h1 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: -0.01em;
 }
 
@@ -776,7 +792,7 @@ kbd {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  font: 700 9px var(--mono);
+  font: 700 10px var(--mono);
 }
 
 .status-badge.success {
@@ -816,7 +832,7 @@ kbd {
 
 .stat-chip span {
   color: var(--dim);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 750;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -824,7 +840,7 @@ kbd {
 
 .stat-chip strong {
   color: var(--text);
-  font: 650 10px var(--mono);
+  font: 650 11px var(--mono);
 }
 
 .result-date {
@@ -833,7 +849,7 @@ kbd {
   margin-top: 4px;
   overflow: hidden;
   color: var(--dim);
-  font: 9px var(--mono);
+  font: 10px var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -861,7 +877,7 @@ kbd {
   color: var(--muted);
   background: #0e1823;
   border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .code-editor {
@@ -875,7 +891,7 @@ kbd {
   background: transparent;
   border: 0;
   outline: 0;
-  font: 12px/1.62 var(--mono);
+  font: 13px/1.62 var(--mono);
   tab-size: 2;
   white-space: pre;
 }
@@ -893,24 +909,24 @@ kbd {
 
 .empty-state strong {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .empty-state span {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .empty-glyph {
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   place-items: center;
   margin-bottom: 4px;
   color: var(--blue);
   background: var(--blue-soft);
   border: 1px solid rgba(80, 199, 245, 0.22);
   border-radius: 14px;
-  font: 700 15px var(--mono);
+  font: 700 17px var(--mono);
 }
 
 .progress-panel {
@@ -931,7 +947,7 @@ kbd {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .progress-head > span {
@@ -953,8 +969,8 @@ kbd {
 }
 
 .activity-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   flex: none;
   background: var(--blue);
   border-radius: 50%;
@@ -962,7 +978,10 @@ kbd {
 }
 
 @keyframes activity {
-  50% { opacity: 0.3; transform: scale(0.75); }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.75);
+  }
 }
 
 .progress-track {
@@ -974,7 +993,7 @@ kbd {
   min-height: 13px;
   margin-top: 5px;
   color: var(--dim);
-  font: 9px var(--mono);
+  font: 10px var(--mono);
   text-align: right;
 }
 
@@ -999,7 +1018,7 @@ kbd {
 .history-title {
   min-width: 0;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1012,7 +1031,7 @@ kbd {
 .history-time {
   margin-top: 3px;
   color: var(--dim);
-  font: 9px var(--mono);
+  font: 10px var(--mono);
 }
 
 .history-actions {
@@ -1028,7 +1047,7 @@ kbd {
   border: 0;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 650;
 }
 
@@ -1053,13 +1072,13 @@ kbd {
   color: var(--muted);
   background: var(--canvas);
   border-radius: 4px;
-  font: 9px var(--mono);
+  font: 10px var(--mono);
 }
 
 .panel-backdrop {
   display: none;
   position: fixed;
-  inset: 64px 0 0;
+  inset: 68px 0 0;
   background: rgba(2, 5, 9, 0.58);
   border: 0;
   z-index: 15;
@@ -1089,7 +1108,10 @@ kbd {
 }
 
 @keyframes modal-in {
-  from { opacity: 0; transform: translateY(5px) scale(0.99); }
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.99);
+  }
 }
 
 .modal-head {
@@ -1103,7 +1125,7 @@ kbd {
 
 .modal-head h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .modal-body {
@@ -1118,7 +1140,7 @@ kbd {
   margin: 0;
   overflow: auto;
   color: var(--text);
-  font: 11px/1.6 var(--mono);
+  font: 12px/1.6 var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1126,7 +1148,7 @@ kbd {
 .dialog-copy {
   margin: 0 0 13px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dialog-input {
@@ -1167,7 +1189,7 @@ kbd {
 .counter-stat span {
   display: block;
   color: var(--dim);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 750;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -1177,7 +1199,7 @@ kbd {
   display: block;
   margin-top: 4px;
   color: var(--text);
-  font: 700 13px var(--mono);
+  font: 700 14px var(--mono);
 }
 
 .counter-input {
@@ -1190,7 +1212,7 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 8px;
   outline: 0;
-  font: 11px/1.55 var(--mono);
+  font: 12px/1.55 var(--mono);
 }
 
 .counter-input:focus {
@@ -1210,7 +1232,7 @@ kbd {
 .tag-section h3 {
   margin: 0 0 8px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1227,12 +1249,18 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--muted);
-  font: 9px var(--mono);
+  font: 10px var(--mono);
 }
 
-.tag.directory { color: #f39aaa; }
-.tag.file { color: #efc26b; }
-.tag.binary { color: #73d5f8; }
+.tag.directory {
+  color: #f39aaa;
+}
+.tag.file {
+  color: #efc26b;
+}
+.tag.binary {
+  color: #73d5f8;
+}
 
 .toast {
   position: fixed;
@@ -1248,9 +1276,11 @@ kbd {
   opacity: 0;
   pointer-events: none;
   transform: translateY(-7px);
-  transition: opacity 150ms ease, transform 150ms ease;
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
   z-index: 150;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1320,7 +1350,7 @@ kbd {
 
   .history-panel {
     position: fixed;
-    top: 64px;
+    top: 68px;
     right: 0;
     bottom: 0;
     width: min(340px, 88vw);
@@ -1362,13 +1392,13 @@ kbd {
   }
 
   .brand-icon {
-    width: 31px;
-    height: 31px;
+    width: 34px;
+    height: 34px;
   }
 
   .projects-panel {
     position: fixed;
-    top: 64px;
+    top: 68px;
     bottom: 0;
     left: 0;
     width: min(300px, 88vw);
@@ -1455,7 +1485,9 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
