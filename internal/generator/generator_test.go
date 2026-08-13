@@ -2,8 +2,10 @@ package generator
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -40,6 +42,133 @@ func TestCleanAndValidateText(t *testing.T) {
 	if !isTextClean || !strings.Contains(gotClean, "Hello") || strings.Contains(gotClean, "\x07") {
 		t.Errorf("invalid byte cleaning failed. Got: %q", gotClean)
 	}
+}
+
+func TestSanitizeContentSinglePass(t *testing.T) {
+	input := "line  \r\n\r\n\r\nnext\t"
+	if got, want := SanitizeContent(input), "line\n\nnext"; got != want {
+		t.Fatalf("SanitizeContent() = %q, want %q", got, want)
+	}
+}
+
+func TestGenerator_SanitizesCDATAAndEscapesPath(t *testing.T) {
+	projectDir := t.TempDir()
+	outputDir := t.TempDir()
+	content := "first  \r\n\r\n\r\nvalue ]]> tail\r\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "a&b.go"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.TempDir = outputDir
+	tok := tokenizer.NewTokenizer(t.TempDir())
+	gen := NewGenerator(cfg, scanner.NewScanner(), tok)
+	result, err := gen.Generate(context.Background(), projectDir, "full", nil)
+	if err != nil {
+		t.Fatalf("Generate failed: %v", err)
+	}
+
+	document, err := os.ReadFile(result.FilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(document)
+	for _, expected := range []string{`<file path="a&amp;b.go">`, "first\n\nvalue ]]]]><![CDATA[> tail\n"} {
+		if !strings.Contains(text, expected) {
+			t.Errorf("output is missing %q:\n%s", expected, text)
+		}
+	}
+	if strings.Contains(text, "first  \r") || strings.Contains(text, "\n\n\n") {
+		t.Errorf("output was not normalized: %q", text)
+	}
+
+	expectedTokens := int64(tok.CountTokensUncached(SanitizeContent(content)))
+	if result.TotalTokens != expectedTokens {
+		t.Errorf("tokens = %d, want %d", result.TotalTokens, expectedTokens)
+	}
+	if !regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \([+-]\d{2}:\d{2}\)$`).MatchString(result.GeneratedAt) {
+		t.Errorf("generated_at is not a stable millisecond timestamp: %q", result.GeneratedAt)
+	}
+}
+
+func TestGenerator_ExcludesOversizedFilesFromTokens(t *testing.T) {
+	projectDir := t.TempDir()
+	outputDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "small.txt"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "large.txt"), []byte(strings.Repeat("large", 100)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.TempDir = outputDir
+	cfg.MaxFileSize = 32
+	tok := tokenizer.NewTokenizer(t.TempDir())
+	result, err := NewGenerator(cfg, scanner.NewScanner(), tok).Generate(context.Background(), projectDir, "stats", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SkippedFiles != 1 || result.TotalFiles != 2 || result.Mode != "stats" {
+		t.Errorf("unexpected result state: %+v", result)
+	}
+	if want := int64(tok.CountTokensUncached("ok\n")); result.TotalTokens != want {
+		t.Errorf("tokens = %d, want only small-file tokens %d", result.TotalTokens, want)
+	}
+	document, _ := os.ReadFile(result.FilePath)
+	if !strings.Contains(string(document), "FILE TOO LARGE - CONTENT EXCLUDED") {
+		t.Errorf("large-file marker missing from output")
+	}
+	if matches, _ := filepath.Glob(filepath.Join(outputDir, "*.part")); len(matches) != 0 {
+		t.Errorf("successful generation left partial files: %v", matches)
+	}
+}
+
+func TestGenerator_CancellationRemovesPartialOutput(t *testing.T) {
+	projectDir := t.TempDir()
+	outputDir := t.TempDir()
+	for index := range 100 {
+		name := filepath.Join(projectDir, "file_"+formatTestIndex(index)+".go")
+		if err := os.WriteFile(name, []byte(strings.Repeat("package sample\n", 200)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.TempDir = outputDir
+	cfg.Workers = 4
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	events := make(chan ProgressEvent)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for event := range events {
+			if event.Type == "progress" {
+				if percent, ok := event.Data["percent"].(int); ok && percent >= 10 {
+					cancel()
+				}
+			}
+		}
+	}()
+
+	_, err := NewGenerator(cfg, scanner.NewScanner(), tokenizer.NewTokenizer(t.TempDir())).Generate(ctx, projectDir, "full", events)
+	close(events)
+	<-done
+	if err == nil {
+		t.Fatal("expected cancelled generation to return an error")
+	}
+	files, globErr := filepath.Glob(filepath.Join(outputDir, "*"))
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(files) != 0 {
+		t.Errorf("cancelled generation left output artifacts: %v", files)
+	}
+}
+
+func formatTestIndex(index int) string {
+	return fmt.Sprintf("%03d", index)
 }
 
 func TestGenerator_TokenStatsExcludesTree(t *testing.T) {

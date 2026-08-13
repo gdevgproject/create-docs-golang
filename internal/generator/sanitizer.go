@@ -11,23 +11,29 @@ func SanitizeContent(content string) string {
 		return ""
 	}
 
-	// Normalize line endings
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-	content = strings.ReplaceAll(content, "\r", "\n")
-
-	// Trim trailing space per line
-	lines := strings.Split(content, "\n")
-	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, " \t")
+	output := make([]byte, 0, len(content))
+	for index := 0; index < len(content); index++ {
+		current := content[index]
+		if current == '\r' {
+			if index+1 < len(content) && content[index+1] == '\n' {
+				index++
+			}
+			current = '\n'
+		}
+		if current == '\n' {
+			for len(output) > 0 && (output[len(output)-1] == ' ' || output[len(output)-1] == '\t') {
+				output = output[:len(output)-1]
+			}
+			if len(output) >= 2 && output[len(output)-1] == '\n' && output[len(output)-2] == '\n' {
+				continue
+			}
+		}
+		output = append(output, current)
 	}
-	content = strings.Join(lines, "\n")
-
-	// Collapse 3 or more consecutive newlines down to 2
-	for strings.Contains(content, "\n\n\n") {
-		content = strings.ReplaceAll(content, "\n\n\n", "\n\n")
+	for len(output) > 0 && (output[len(output)-1] == ' ' || output[len(output)-1] == '\t') {
+		output = output[:len(output)-1]
 	}
-
-	return content
+	return string(output)
 }
 
 // EscapeCDATA ensures CDATA closure string "]]>" in content does not break XML enclosure

@@ -2,457 +2,413 @@ package generator
 
 import (
 	"bufio"
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
-	"unicode/utf16"
 
-	"codedocs/internal/config"
 	"codedocs/internal/scanner"
-	"codedocs/internal/tokenizer"
 )
 
-var safeFilenameRegex = regexp.MustCompile(`[^A-Za-z0-9_\-]`)
+const (
+	workerMemoryBudget  = int64(256 << 20)
+	maxGeneratorWorkers = 32
+)
 
-type ProgressEvent struct {
-	Type    string         `json:"type"` // "log", "progress", "complete", "error"
-	Message string         `json:"message"`
-	Data    map[string]any `json:"data,omitempty"`
-}
-
-type GenerateResult struct {
-	FileName    string  `json:"file_name"`
-	FilePath    string  `json:"file_path"`
-	TotalFiles  int     `json:"total"`
-	TotalLines  int64   `json:"lines"`
-	TotalTokens int64   `json:"tokens"`
-	TokenMode   string  `json:"token_mode"`
-	Elapsed     float64 `json:"elapsed"`
-	SizeBytes   int64   `json:"size"`
-	Mode        string  `json:"mode"`
-	GeneratedAt string  `json:"generated_at"`
-}
-
-type Generator struct {
-	cfg       *config.Config
-	sc        *scanner.Scanner
-	tok       *tokenizer.Tokenizer
-	bufferCap int
-}
-
-func NewGenerator(cfg *config.Config, sc *scanner.Scanner, tok *tokenizer.Tokenizer) *Generator {
-	if cfg == nil {
-		cfg = config.DefaultConfig()
-	}
-	if sc == nil {
-		sc = scanner.NewScanner()
-	}
-	if tok == nil {
-		tok = tokenizer.NewTokenizer(cfg.CacheDir)
-	}
-
-	return &Generator{
-		cfg:       cfg,
-		sc:        sc,
-		tok:       tok,
-		bufferCap: 524288, // 512KB
-	}
-}
-
-type job struct {
-	index int
-	path  string
-	rel   string
-}
-
-type result struct {
-	index  int
-	rel    string
-	chunk  []byte
-	lines  int64
-	tokens int64
-}
-
-// Generate scans projectPath and streams output to target markdown file while sending progress events
-func (g *Generator) Generate(ctx context.Context, projectPath string, mode string, events chan<- ProgressEvent) (*GenerateResult, error) {
+// Generate scans projectPath and atomically creates an ordered Markdown context
+// document while publishing cancellable progress events.
+func (g *Generator) Generate(ctx context.Context, projectPath, mode string, events chan<- ProgressEvent) (*GenerateResult, error) {
 	startTime := time.Now()
 	localNow := startTime.Local()
-	formattedLocalTime := localNow.Format("2006-01-02 15:04:05 (-07:00)")
+	generatedAt := localNow.Format("2006-01-02 15:04:05.000 (-07:00)")
+	if mode != "stats" {
+		mode = "full"
+	}
 
-	cleanPath := filepath.Clean(projectPath)
+	cleanPath, err := filepath.Abs(filepath.Clean(projectPath))
+	if err != nil {
+		return nil, fmt.Errorf("invalid project directory: %w", err)
+	}
 	info, err := os.Stat(cleanPath)
 	if err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("invalid project directory: %s", projectPath)
 	}
 
-	if events != nil {
-		events <- ProgressEvent{
-			Type:    "progress",
-			Message: "🔍 Scanning project directory & ignore rules...",
-			Data: map[string]any{
-				"percent": 3,
-				"current": 0,
-				"total":   0,
-				"speed":   0,
-			},
-		}
+	if err := emitProgress(ctx, events, ProgressEvent{
+		Type:    "progress",
+		Message: "Scanning project and ignore rules…",
+		Data:    progressData(3, 0, 0, 0),
+	}); err != nil {
+		return nil, err
 	}
 
-	files, err := g.sc.ScanProjectFiles(cleanPath)
+	files, err := g.sc.ScanProjectFilesContext(ctx, cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("error scanning project files: %w", err)
+		return nil, fmt.Errorf("scan project files: %w", err)
 	}
-
 	totalFiles := len(files)
 	if totalFiles == 0 {
-		return nil, fmt.Errorf("no valid files found in project")
+		return nil, fmt.Errorf("no eligible files found in project")
 	}
 
-	if events != nil {
-		events <- ProgressEvent{
-			Type:    "progress",
-			Message: fmt.Sprintf("📦 Found %d files. Preparing worker pool...", totalFiles),
-			Data: map[string]any{
-				"percent": 8,
-				"current": 0,
-				"total":   totalFiles,
-				"speed":   0,
-			},
-		}
+	if err := emitProgress(ctx, events, ProgressEvent{
+		Type:    "progress",
+		Message: fmt.Sprintf("Found %d files", totalFiles),
+		Data:    progressData(8, 0, totalFiles, 0),
+	}); err != nil {
+		return nil, err
 	}
 
 	tokenMode := g.tok.Mode()
-	if events != nil {
-		if tokenMode == "exact" {
-			events <- ProgressEvent{Type: "log", Message: "✅ Token counter: CHÍNH XÁC (o200k_base thật — encoding của GPT-4o/GPT-5.x)."}
-		} else {
-			events <- ProgressEvent{Type: "log", Message: "⚠️ Không tải được vocab thật (server không có internet ra ngoài hoặc bị chặn) — dùng chế độ ƯỚC TÍNH."}
-		}
+	tokenMessage := "Exact o200k_base token counting ready"
+	if tokenMode != "exact" {
+		tokenMessage = "Offline token estimation active"
+	}
+	if err := emitProgress(ctx, events, ProgressEvent{Type: "log", Message: tokenMessage}); err != nil {
+		return nil, err
 	}
 
-	// Prepare output file name and directory
-	if err := os.MkdirAll(g.cfg.TempDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	if err := os.MkdirAll(g.cfg.TempDir, 0o700); err != nil {
+		return nil, fmt.Errorf("create output directory: %w", err)
 	}
 
-	projName := filepath.Base(cleanPath)
-	if projName == "" || projName == "." || projName == "/" {
-		projName = "project"
-	}
-	safeName := safeFilenameRegex.ReplaceAllString(projName, "_")
-	timestamp := localNow.Format("20060102_150405")
-	fileName := fmt.Sprintf("docs_%s_%s.md", safeName, timestamp)
-	outFilePath := filepath.Join(g.cfg.TempDir, fileName)
-
-	outFile, err := os.Create(outFilePath)
+	projectName := filepath.Base(cleanPath)
+	fileName := outputFileName(projectName, localNow)
+	outputPath := filepath.Join(g.cfg.TempDir, fileName)
+	partialPath := outputPath + ".part"
+	outputFile, err := os.OpenFile(partialPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outFile.Close()
-
-	writer := bufio.NewWriterSize(outFile, g.bufferCap)
-
-	// Write Document Header with exact local datetime
-	header := fmt.Sprintf("# DOCUMENTATION: %s\nGenerated: %s\n\n", projName, formattedLocalTime)
-	header += "## SYSTEM INSTRUCTION (Prompt)\n"
-	header += "You are an expert AI assistant. The following text contains the full source code of a project.\n"
-	header += "1. **Structure**: Refer to the 'Directory Tree' for file organization.\n"
-	header += "2. **Content**: Source code is wrapped in `<file>` tags with `path` attributes.\n"
-	header += "3. **Syntax**: Code content is enclosed in `<![CDATA[ ... ]]>` to preserve characters.\n"
-	header += "4. **Binary**: Binary/Media files are listed in the tree but their content is excluded to save tokens.\n\n"
-
-	if _, err := writer.WriteString(header); err != nil {
-		return nil, err
-	}
-
-	// Write Directory Tree
-	treeString := scanner.GenerateDirectoryTree(cleanPath, files)
-	if _, err := writer.WriteString(fmt.Sprintf("## 1. DIRECTORY TREE\n```text\n%s```\n\n## 2. SOURCE CODE CONTENT\n\n<project_codebase>\n\n", treeString)); err != nil {
-		return nil, err
-	}
-
-	normRoot := filepath.ToSlash(cleanPath)
-	prefixLen := len(normRoot) + 1
-
-	// Setup Worker Pool for File Processing
-	jobsChan := make(chan job, totalFiles)
-	resultsChan := make(chan result, totalFiles)
-
-	for i, f := range files {
-		rel := f
-		if len(f) > prefixLen {
-			rel = f[prefixLen:]
+		// A nanosecond timestamp makes this extremely rare, but retry once with a
+		// new clock value rather than overwriting any completed document.
+		fileName = outputFileName(projectName, time.Now().Local())
+		outputPath = filepath.Join(g.cfg.TempDir, fileName)
+		partialPath = outputPath + ".part"
+		outputFile, err = os.OpenFile(partialPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return nil, fmt.Errorf("create output file: %w", err)
 		}
-		jobsChan <- job{index: i, path: f, rel: rel}
-	}
-	close(jobsChan)
-
-	var processedCount int64
-	var wg sync.WaitGroup
-	workers := g.cfg.Workers
-	if workers < 1 {
-		workers = 4
 	}
 
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
+	committed := false
+	defer func() {
+		_ = outputFile.Close()
+		if !committed {
+			_ = os.Remove(partialPath)
+		}
+	}()
+
+	counted := &countingWriter{writer: outputFile}
+	writer := bufio.NewWriterSize(counted, g.bufferCap)
+	formattedTime := generatedAt
+	header := buildDocumentHeader(projectName, formattedTime)
+	if _, err := writer.WriteString(header); err != nil {
+		return nil, fmt.Errorf("write document header: %w", err)
+	}
+
+	tree := scanner.GenerateDirectoryTree(cleanPath, files)
+	if _, err := fmt.Fprintf(writer, "## 1. DIRECTORY TREE\n```text\n%s```\n\n## 2. SOURCE CODE CONTENT\n\n<project_codebase>\n\n", tree); err != nil {
+		return nil, fmt.Errorf("write directory tree: %w", err)
+	}
+
+	workCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
+	workers := g.workerCount(totalFiles)
+	jobs := make(chan job, workers)
+	results := make(chan result, workers)
+	limiter := newMemoryLimiter(workerMemoryBudget)
+
+	go g.produceJobs(workCtx, cleanPath, files, jobs, limiter)
+	var workerGroup sync.WaitGroup
+	for range workers {
+		workerGroup.Add(1)
 		go func() {
-			defer wg.Done()
-			for j := range jobsChan {
+			defer workerGroup.Done()
+			for currentJob := range jobs {
+				processed := g.processFile(workCtx, currentJob, limiter)
 				select {
-				case <-ctx.Done():
+				case results <- processed:
+				case <-workCtx.Done():
+					limiter.release(processed.memoryBytes)
 					return
-				default:
-				}
-
-				res := g.processFile(j)
-				resultsChan <- res
-
-				// Real-time smooth atomic progress streaming!
-				count := atomic.AddInt64(&processedCount, 1)
-				if events != nil && (count <= 5 || count%5 == 0 || count == int64(totalFiles)) {
-					elapsedSec := time.Since(startTime).Seconds()
-					speed := float64(0)
-					if elapsedSec > 0 {
-						speed = math.Round(float64(count) / elapsedSec)
-					}
-					// Scale worker progress smoothly between 10% and 90%
-					pct := 10 + int((float64(count)/float64(totalFiles))*80)
-
-					events <- ProgressEvent{
-						Type:    "progress",
-						Message: fmt.Sprintf("Processing (%d/%d): %s", count, totalFiles, res.rel),
-						Data: map[string]any{
-							"percent": pct,
-							"current": count,
-							"total":   totalFiles,
-							"speed":   speed,
-						},
-					}
 				}
 			}
 		}()
 	}
+	go func() {
+		workerGroup.Wait()
+		close(results)
+	}()
 
-	wg.Wait()
-	close(resultsChan)
-
-	// Collect results ordered by file index
-	resMap := make(map[int]result, totalFiles)
-	for r := range resultsChan {
-		resMap[r.index] = r
+	stats, pipelineErr := g.writeOrderedResults(workCtx, cancelWorkers, writer, results, limiter, totalFiles, startTime, events)
+	if pipelineErr != nil {
+		return nil, pipelineErr
 	}
-
-	var totalLines int64
-	var totalTokens int64
-
-	for i := 0; i < totalFiles; i++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		r, ok := resMap[i]
-		if !ok {
-			continue
-		}
-
-		totalLines += r.lines
-		totalTokens += r.tokens
-
-		if _, err := writer.Write(r.chunk); err != nil {
-			return nil, err
-		}
-	}
-
-	if events != nil {
-		events <- ProgressEvent{
-			Type:    "progress",
-			Message: "Writing final output file...",
-			Data: map[string]any{
-				"percent": 98,
-				"current": totalFiles,
-				"total":   totalFiles,
-				"speed":   float64(totalFiles) / math.Max(0.1, time.Since(startTime).Seconds()),
-			},
-		}
-	}
-
-	elapsed := math.Round(time.Since(startTime).Seconds()*100) / 100
-
-	footer := "</project_codebase>\n\n"
-	tokenLabel := fmt.Sprintf("%d tokens (o200k_base, exact)", totalTokens)
-	if tokenMode != "exact" {
-		tokenLabel = fmt.Sprintf("~%d tokens (estimated)", totalTokens)
-	}
-
-	footer += fmt.Sprintf("<!-- SUMMARY: %d files, %d lines, %s, size: %d bytes, time: %.2fs -->\n",
-		totalFiles, totalLines, tokenLabel, writer.Buffered(), elapsed)
-
-	if _, err := writer.WriteString(footer); err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
+	if err := emitProgress(ctx, events, ProgressEvent{
+		Type:    "progress",
+		Message: "Finalizing document…",
+		Data:    progressData(98, totalFiles, totalFiles, float64(totalFiles)/math.Max(0.1, time.Since(startTime).Seconds())),
+	}); err != nil {
+		return nil, err
+	}
+
+	elapsed := math.Round(time.Since(startTime).Seconds()*100) / 100
+	tokenLabel := fmt.Sprintf("%d tokens (o200k_base, exact)", stats.tokens)
+	if tokenMode != "exact" {
+		tokenLabel = fmt.Sprintf("~%d tokens (estimated)", stats.tokens)
+	}
+	bytesBeforeFooter := counted.bytes + int64(writer.Buffered())
+	footer := fmt.Sprintf(
+		"</project_codebase>\n\n<!-- SUMMARY: %d files, %d lines, %s, source bytes: %d, skipped: %d, unreadable: %d, time: %.2fs -->\n",
+		totalFiles, stats.lines, tokenLabel, bytesBeforeFooter, stats.skipped, stats.failed, elapsed,
+	)
+	if _, err := writer.WriteString(footer); err != nil {
+		return nil, fmt.Errorf("write document footer: %w", err)
+	}
 	if err := writer.Flush(); err != nil {
-		return nil, fmt.Errorf("failed to flush writer: %w", err)
+		return nil, fmt.Errorf("flush output: %w", err)
+	}
+	if err := outputFile.Sync(); err != nil {
+		return nil, fmt.Errorf("sync output: %w", err)
+	}
+	if err := outputFile.Close(); err != nil {
+		return nil, fmt.Errorf("close output: %w", err)
+	}
+	if err := os.Rename(partialPath, outputPath); err != nil {
+		return nil, fmt.Errorf("commit output file: %w", err)
+	}
+	committed = true
+
+	fileInfo, err := os.Stat(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("inspect completed output: %w", err)
+	}
+	result := &GenerateResult{
+		FileName:        fileName,
+		FilePath:        outputPath,
+		TotalFiles:      totalFiles,
+		TotalLines:      stats.lines,
+		TotalTokens:     stats.tokens,
+		TokenMode:       tokenMode,
+		Elapsed:         elapsed,
+		SizeBytes:       fileInfo.Size(),
+		Mode:            mode,
+		GeneratedAt:     generatedAt,
+		BinaryFiles:     stats.binary,
+		SkippedFiles:    stats.skipped,
+		UnreadableFiles: stats.failed,
 	}
 
-	fileInfo, err := outFile.Stat()
-	sizeBytes := int64(0)
-	if err == nil {
-		sizeBytes = fileInfo.Size()
+	if err := emitProgress(ctx, events, ProgressEvent{
+		Type:    "complete",
+		Message: fileName,
+		Data: map[string]any{
+			"total":            result.TotalFiles,
+			"lines":            result.TotalLines,
+			"tokens":           result.TotalTokens,
+			"token_mode":       result.TokenMode,
+			"size":             result.SizeBytes,
+			"elapsed":          result.Elapsed,
+			"file_name":        result.FileName,
+			"generated_at":     result.GeneratedAt,
+			"mode":             result.Mode,
+			"binary_files":     result.BinaryFiles,
+			"skipped_files":    result.SkippedFiles,
+			"unreadable_files": result.UnreadableFiles,
+		},
+	}); err != nil && !errors.Is(err, context.Canceled) {
+		return nil, err
 	}
 
-	res := &GenerateResult{
-		FileName:    fileName,
-		FilePath:    outFilePath,
-		TotalFiles:  totalFiles,
-		TotalLines:  totalLines,
-		TotalTokens: totalTokens,
-		TokenMode:   tokenMode,
-		Elapsed:     elapsed,
-		SizeBytes:   sizeBytes,
-		Mode:        mode,
-		GeneratedAt: formattedLocalTime,
-	}
+	return result, nil
+}
 
-	if events != nil {
-		events <- ProgressEvent{
-			Type:    "complete",
-			Message: fileName,
-			Data: map[string]any{
-				"total":        res.TotalFiles,
-				"lines":        res.TotalLines,
-				"tokens":       res.TotalTokens,
-				"token_mode":   res.TokenMode,
-				"size":         res.SizeBytes,
-				"elapsed":      res.Elapsed,
-				"file_name":    res.FileName,
-				"generated_at": res.GeneratedAt,
-			},
+func (g *Generator) workerCount(totalFiles int) int {
+	workers := g.cfg.Workers
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > maxGeneratorWorkers {
+		workers = maxGeneratorWorkers
+	}
+	if workers > totalFiles {
+		workers = totalFiles
+	}
+	return workers
+}
+
+func (g *Generator) writeOrderedResults(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	writer *bufio.Writer,
+	results <-chan result,
+	limiter *memoryLimiter,
+	totalFiles int,
+	startTime time.Time,
+	events chan<- ProgressEvent,
+) (aggregateStats, error) {
+	pending := make(map[int]result)
+	nextIndex := 0
+	processed := 0
+	var stats aggregateStats
+	var pipelineErr error
+
+	for current := range results {
+		processed++
+		if pipelineErr != nil {
+			limiter.release(current.memoryBytes)
+			continue
+		}
+		pending[current.index] = current
+
+		for {
+			ordered, exists := pending[nextIndex]
+			if !exists {
+				break
+			}
+			delete(pending, nextIndex)
+			if _, err := writer.Write(ordered.chunk); err != nil {
+				pipelineErr = fmt.Errorf("write file %q: %w", ordered.rel, err)
+				cancel()
+			}
+			stats.lines += ordered.lines
+			stats.tokens += ordered.tokens
+			stats.binary += boolInt(ordered.binary)
+			stats.skipped += boolInt(ordered.skipped)
+			stats.failed += boolInt(ordered.failed)
+			limiter.release(ordered.memoryBytes)
+			nextIndex++
+			if pipelineErr != nil {
+				break
+			}
+		}
+
+		if pipelineErr == nil && (processed <= 5 || processed%5 == 0 || processed == totalFiles) {
+			elapsed := time.Since(startTime).Seconds()
+			speed := float64(0)
+			if elapsed > 0 {
+				speed = math.Round(float64(processed) / elapsed)
+			}
+			percent := 10 + int((float64(processed)/float64(totalFiles))*80)
+			if err := emitProgress(ctx, events, ProgressEvent{
+				Type:    "progress",
+				Message: fmt.Sprintf("Processing %d/%d · %s", processed, totalFiles, current.rel),
+				Data:    progressData(percent, processed, totalFiles, speed),
+			}); err != nil {
+				pipelineErr = err
+				cancel()
+			}
 		}
 	}
 
-	return res, nil
+	for _, current := range pending {
+		limiter.release(current.memoryBytes)
+	}
+	if pipelineErr != nil {
+		return aggregateStats{}, pipelineErr
+	}
+	if err := ctx.Err(); err != nil {
+		return aggregateStats{}, err
+	}
+	if nextIndex != totalFiles {
+		return aggregateStats{}, fmt.Errorf("generation stopped after %d of %d files", nextIndex, totalFiles)
+	}
+	return stats, nil
 }
 
-func (g *Generator) processFile(j job) result {
-	if g.sc.IsBinary(filepath.Ext(j.path)) {
-		var buf bytes.Buffer
-		buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n[BINARY/MEDIA FILE - CONTENT EXCLUDED]\n</file>\n\n", j.rel))
-		return result{
-			index:  j.index,
-			rel:    j.rel,
-			chunk:  buf.Bytes(),
-			lines:  1,
-			tokens: 0,
+func (g *Generator) produceJobs(ctx context.Context, root string, files []string, jobs chan<- job, limiter *memoryLimiter) {
+	defer close(jobs)
+	for index, path := range files {
+		nativePath := filepath.Clean(filepath.FromSlash(path))
+		rel, err := filepath.Rel(root, nativePath)
+		if err != nil {
+			rel = filepath.Base(path)
+		}
+		reservation := g.memoryReservation(nativePath)
+		if err := limiter.acquire(ctx, reservation); err != nil {
+			return
+		}
+		current := job{index: index, path: nativePath, rel: filepath.ToSlash(rel), memoryBytes: reservation}
+		select {
+		case jobs <- current:
+		case <-ctx.Done():
+			limiter.release(reservation)
+			return
 		}
 	}
+}
 
-	rawBytes, err := os.ReadFile(j.path)
-	if err != nil || len(rawBytes) == 0 {
-		return result{index: j.index, rel: j.rel}
+func (g *Generator) memoryReservation(path string) int64 {
+	if g.sc.IsBinary(filepath.Ext(path)) {
+		return 0
 	}
-
-	cleanText, isText := CleanAndValidateText(rawBytes)
-	if !isText {
-		// Null byte binary payload detected despite extension!
-		var buf bytes.Buffer
-		buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n[BINARY/MEDIA FILE - CONTENT EXCLUDED]\n</file>\n\n", j.rel))
-		return result{
-			index:  j.index,
-			rel:    j.rel,
-			chunk:  buf.Bytes(),
-			lines:  1,
-			tokens: 0,
-		}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || (g.cfg.MaxFileSize > 0 && info.Size() > g.cfg.MaxFileSize) {
+		return 0
 	}
-
-	lines := int64(strings.Count(cleanText, "\n")) + 1
-	tokens := int64(g.tok.CountTokens(cleanText))
-
-	var buf bytes.Buffer
-	buf.Grow(len(cleanText) + 128)
-
-	buf.WriteString(fmt.Sprintf("<file path=\"%s\">\n<![CDATA[\n", j.rel))
-	buf.WriteString(cleanText)
-	if !strings.HasSuffix(cleanText, "\n") {
-		buf.WriteByte('\n')
+	reservation := info.Size() * 3
+	if reservation < minimumMemoryReservation {
+		reservation = minimumMemoryReservation
 	}
-	buf.WriteString("]]>\n</file>\n\n")
+	return reservation
+}
 
-	return result{
-		index:  j.index,
-		rel:    j.rel,
-		chunk:  buf.Bytes(),
-		lines:  lines,
-		tokens: tokens,
+func emitProgress(ctx context.Context, events chan<- ProgressEvent, event ProgressEvent) error {
+	if events == nil {
+		return ctx.Err()
+	}
+	select {
+	case events <- event:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
-// CleanAndValidateText sanitizes file bytes, converts UTF-16/BOM to valid UTF-8,
-// detects embedded binary null bytes \x00, and strips unprintable control chars.
-func CleanAndValidateText(data []byte) (string, bool) {
-	if len(data) == 0 {
-		return "", true
+func progressData(percent, current, total int, speed float64) map[string]any {
+	return map[string]any{
+		"percent": percent,
+		"current": current,
+		"total":   total,
+		"speed":   speed,
 	}
-
-	// 1. Detect UTF-8 BOM (\xEF\xBB\xBF) and strip it
-	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
-		data = data[3:]
-	} else if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xFE {
-		// 2. Detect UTF-16 LE BOM (\xFF\xFE) and decode to UTF-8
-		data = decodeUTF16LE(data[2:])
-	} else if len(data) >= 2 && data[0] == 0xFE && data[1] == 0xFF {
-		// 3. Detect UTF-16 BE BOM (\xFE\xFF) and decode to UTF-8
-		data = decodeUTF16BE(data[2:])
-	}
-
-	// 4. Null byte heuristic check: If first 1024 bytes contain \x00, treat as BINARY file!
-	checkLen := len(data)
-	if checkLen > 1024 {
-		checkLen = 1024
-	}
-	if bytes.IndexByte(data[:checkLen], 0x00) != -1 {
-		return "", false // Binary payload detected!
-	}
-
-	// 5. Convert invalid UTF-8 byte sequences safely using strings.ToValidUTF8
-	validStr := strings.ToValidUTF8(string(data), "")
-
-	// 6. Clean non-printable control codes (keep \n, \r, \t, and printable unicode)
-	var sb strings.Builder
-	sb.Grow(len(validStr))
-	for _, r := range validStr {
-		if r == '\n' || r == '\r' || r == '\t' || (r >= 32 && r != 127) {
-			sb.WriteRune(r)
-		}
-	}
-
-	return sb.String(), true
 }
 
-func decodeUTF16LE(b []byte) []byte {
-	var u16s []uint16
-	for i := 0; i+1 < len(b); i += 2 {
-		u16s = append(u16s, uint16(b[i])|uint16(b[i+1])<<8)
+func boolInt(value bool) int {
+	if value {
+		return 1
 	}
-	return []byte(string(utf16.Decode(u16s)))
+	return 0
 }
 
-func decodeUTF16BE(b []byte) []byte {
-	var u16s []uint16
-	for i := 0; i+1 < len(b); i += 2 {
-		u16s = append(u16s, uint16(b[i])<<8|uint16(b[i+1]))
-	}
-	return []byte(string(utf16.Decode(u16s)))
+func buildDocumentHeader(projectName, generatedAt string) string {
+	return fmt.Sprintf(`# DOCUMENTATION: %s
+Generated: %s
+
+## SYSTEM INSTRUCTION (Prompt)
+You are an expert AI assistant. The following text contains the source context of a project.
+1. **Structure**: Refer to the Directory Tree for file organization.
+2. **Content**: Source code is wrapped in <file> elements with path attributes.
+3. **Syntax**: Text is enclosed in CDATA sections to preserve source characters.
+4. **Binary/Large files**: These remain visible in the tree but their content is excluded.
+
+`, projectName, generatedAt)
+}
+
+type countingWriter struct {
+	writer *os.File
+	bytes  int64
+}
+
+func (writer *countingWriter) Write(data []byte) (int, error) {
+	written, err := writer.writer.Write(data)
+	writer.bytes += int64(written)
+	return written, err
 }

@@ -229,6 +229,21 @@ func (tok *Tokenizer) CountTokens(text string) int {
 	return tok.EstimateTokensHeuristic(text)
 }
 
+// CountTokensUncached avoids retaining one-off project files in the interactive
+// memoization cache while preserving exactly the same tokenization result.
+func (tok *Tokenizer) CountTokensUncached(text string) int {
+	if text == "" {
+		return 0
+	}
+	tok.initOnce.Do(func() {
+		tok.init()
+	})
+	if tok.mode == "exact" && tok.t != nil {
+		return len(tok.t.Encode(text, nil, nil))
+	}
+	return tok.EstimateTokensHeuristic(text)
+}
+
 func fnvHash64(s string) uint64 {
 	var hash uint64 = 14695981039346656037
 	for i := 0; i < len(s); i++ {
