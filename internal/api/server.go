@@ -15,16 +15,18 @@ import (
 	"codedocs/internal/generator"
 	"codedocs/internal/scanner"
 	"codedocs/internal/tokenizer"
+	"codedocs/internal/updater"
 )
 
 type Server struct {
-	cfg   *config.Config
-	sc    *scanner.Scanner
-	tok   *tokenizer.Tokenizer
-	gen   *generator.Generator
-	bm    *bookmarks.Manager
-	webFS fs.FS
-	mux   *http.ServeMux
+	cfg           *config.Config
+	sc            *scanner.Scanner
+	tok           *tokenizer.Tokenizer
+	gen           *generator.Generator
+	bm            *bookmarks.Manager
+	updateManager *updater.Manager
+	webFS         fs.FS
+	mux           *http.ServeMux
 
 	shutdownFn   func()
 	shutdownOnce sync.Once
@@ -47,6 +49,14 @@ func WithLocalAccessOnly() Option {
 	}
 }
 
+func WithUpdateManager(manager *updater.Manager) Option {
+	return func(s *Server) {
+		if manager != nil {
+			s.updateManager = manager
+		}
+	}
+}
+
 func NewServer(cfg *config.Config, webFS fs.FS, options ...Option) *Server {
 	if cfg == nil {
 		cfg = config.DefaultConfig()
@@ -58,13 +68,14 @@ func NewServer(cfg *config.Config, webFS fs.FS, options ...Option) *Server {
 	bm := bookmarks.NewManager(cfg.BookmarkFile)
 
 	s := &Server{
-		cfg:   cfg,
-		sc:    sc,
-		tok:   tok,
-		gen:   gen,
-		bm:    bm,
-		webFS: webFS,
-		mux:   http.NewServeMux(),
+		cfg:           cfg,
+		sc:            sc,
+		tok:           tok,
+		gen:           gen,
+		bm:            bm,
+		updateManager: updater.NewManager(cfg.Version),
+		webFS:         webFS,
+		mux:           http.NewServeMux(),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -77,6 +88,13 @@ func NewServer(cfg *config.Config, webFS fs.FS, options ...Option) *Server {
 
 	s.routes()
 	return s
+}
+
+// Close releases background work owned by the API server.
+func (s *Server) Close() {
+	if s.updateManager != nil {
+		s.updateManager.Close()
+	}
 }
 
 func (s *Server) routes() {

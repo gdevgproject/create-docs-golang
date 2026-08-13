@@ -25,6 +25,9 @@ const (
 )
 
 func main() {
+	if handled, exitCode := updater.HandleBootstrap(os.Args); handled {
+		os.Exit(exitCode)
+	}
 	os.Exit(run())
 }
 
@@ -53,6 +56,7 @@ func run() int {
 		serverOptions = append(serverOptions, api.WithLocalAccessOnly())
 	}
 	server := api.NewServer(cfg, web.GetFS(), serverOptions...)
+	defer server.Close()
 
 	httpServer := &http.Server{
 		Handler:           server,
@@ -77,7 +81,7 @@ func run() int {
 	}()
 
 	serverURL := localServerURL(cfg)
-	slog.Info("CodePulse AI started",
+	slog.Info("CodeDocs started",
 		"version", cfg.Version,
 		"url", serverURL,
 		"workers", cfg.Workers,
@@ -86,9 +90,14 @@ func run() int {
 
 	var windowErr error
 	if cfg.OpenBrowser {
-		windowErr = openNativeWindow(appCtx, serverURL, fmt.Sprintf("CodePulse AI %s", cfg.Version), cfg.CacheDir)
+		windowErr = openNativeWindow(appCtx, serverURL, fmt.Sprintf("CodeDocs %s", cfg.Version), cfg.CacheDir, updater.MarkStartupHealthy)
 		cancelApp() // Closing the native window owns the desktop application's lifetime.
 	} else {
+		if err := updater.MarkStartupHealthy(); err != nil {
+			slog.Error("updated application failed startup handshake", "error", err)
+			cancelApp()
+			windowErr = err
+		}
 		<-appCtx.Done()
 	}
 
@@ -112,7 +121,7 @@ func run() int {
 		return 1
 	}
 
-	slog.Info("CodePulse AI stopped cleanly")
+	slog.Info("CodeDocs stopped cleanly")
 	return 0
 }
 

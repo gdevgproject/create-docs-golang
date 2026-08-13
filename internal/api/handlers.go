@@ -15,7 +15,6 @@ import (
 	"codedocs/internal/config"
 	"codedocs/internal/generator"
 	"codedocs/internal/scanner"
-	"codedocs/internal/updater"
 )
 
 func (s *Server) handleGetBookmarks(w http.ResponseWriter, r *http.Request) {
@@ -410,7 +409,7 @@ func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	info, err := updater.CheckUpdate(s.cfg.Version)
+	info, err := s.updateManager.Check(r.Context())
 	if err != nil {
 		s.jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -433,7 +432,7 @@ func (s *Server) handleDownloadUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := updater.StartBackgroundDownload(body.DownloadURL); err != nil {
+	if err := s.updateManager.StartBackgroundDownload(body.DownloadURL); err != nil {
 		s.jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -445,10 +444,14 @@ func (s *Server) handleDownloadUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetUpdateProgress(w http.ResponseWriter, r *http.Request) {
-	s.jsonResponse(w, updater.GetProgress())
+	s.jsonResponse(w, s.updateManager.GetProgress())
 }
 
 func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
+	if err := s.updateManager.ApplyPreparedUpdate(); err != nil {
+		s.jsonError(w, err.Error(), http.StatusConflict)
+		return
+	}
 	s.jsonResponse(w, map[string]string{
 		"status":  "success",
 		"message": "Applying update and restarting application...",
@@ -456,7 +459,7 @@ func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		time.Sleep(300 * time.Millisecond)
-		_ = updater.ApplyPreparedUpdate()
+		s.requestShutdown()
 	}()
 }
 

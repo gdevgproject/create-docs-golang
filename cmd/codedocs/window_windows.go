@@ -43,7 +43,7 @@ func setWindowDarkMode(hwnd uintptr) {
 	}
 }
 
-func openNativeWindow(ctx context.Context, url, title, cacheDir string) error {
+func openNativeWindow(ctx context.Context, url, title, cacheDir string, onReady func() error) error {
 	options := webview2.WebViewOptions{
 		Debug:     false,
 		AutoFocus: true,
@@ -66,6 +66,11 @@ func openNativeWindow(ctx context.Context, url, title, cacheDir string) error {
 	w.SetSize(minimumWindowWidth, minimumWindowHeight, webview2.HintMin)
 	setWindowDarkMode(uintptr(w.Window()))
 	w.Navigate(url)
+	if onReady != nil {
+		if err := onReady(); err != nil {
+			return fmt.Errorf("complete update startup: %w", err)
+		}
+	}
 
 	windowDone := make(chan struct{})
 	go func() {
