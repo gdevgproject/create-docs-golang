@@ -115,6 +115,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET "+bp+"/api/download", s.handleDownload)
 	s.mux.HandleFunc("GET "+bp+"/api/generate", s.handleGenerate)
 	s.mux.HandleFunc("GET "+bp+"/api/version", s.handleGetVersion)
+	s.mux.HandleFunc("GET "+bp+"/api/status", s.handleGetStatus)
 	s.mux.HandleFunc("GET "+bp+"/api/check-update", s.handleCheckUpdate)
 	s.mux.HandleFunc("POST "+bp+"/api/download-update", s.handleDownloadUpdate)
 	s.mux.HandleFunc("GET "+bp+"/api/update-progress", s.handleGetUpdateProgress)

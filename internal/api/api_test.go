@@ -123,6 +123,97 @@ func TestAPI_CountTokens(t *testing.T) {
 	}
 }
 
+func TestAPI_CountTokensReportsUnicodeCharacters(t *testing.T) {
+	server := NewServer(config.DefaultConfig(), nil)
+	body, _ := json.Marshal(map[string]string{"text": "é😊"})
+	request := httptest.NewRequest(http.MethodPost, "/api/count-tokens", bytes.NewReader(body))
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("count tokens returned %d: %s", response.Code, response.Body.String())
+	}
+	var result struct {
+		Characters int `json:"characters"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Characters != 2 {
+		t.Fatalf("characters = %d, want 2 Unicode code points", result.Characters)
+	}
+}
+
+func TestAPI_RejectsOversizedJSONBody(t *testing.T) {
+	server := NewServer(config.DefaultConfig(), nil)
+	body := `{"path":"` + strings.Repeat("x", maxJSONBodyBytes) + `"}`
+	request := httptest.NewRequest(http.MethodPost, "/api/bookmarks", strings.NewReader(body))
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body returned %d, want 413: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestAPI_ContentPreviewAndLegacyFullResponse(t *testing.T) {
+	tempDirectory := t.TempDir()
+	content := []byte("0123456789")
+	if err := os.WriteFile(filepath.Join(tempDirectory, "document.md"), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.DefaultConfig()
+	cfg.TempDir = tempDirectory
+	server := NewServer(cfg, nil)
+
+	previewRequest := httptest.NewRequest(http.MethodGet, "/api/content?file=document.md&offset=2&limit=4", nil)
+	previewResponse := httptest.NewRecorder()
+	server.ServeHTTP(previewResponse, previewRequest)
+	if previewResponse.Code != http.StatusPartialContent || previewResponse.Body.String() != "2345" {
+		t.Fatalf("preview = status %d body %q", previewResponse.Code, previewResponse.Body.String())
+	}
+	if previewResponse.Header().Get("X-Content-Size") != "10" ||
+		previewResponse.Header().Get("X-Content-Truncated") != "true" {
+		t.Fatalf("preview metadata missing: %v", previewResponse.Header())
+	}
+
+	fullRequest := httptest.NewRequest(http.MethodGet, "/api/content?file=document.md", nil)
+	fullResponse := httptest.NewRecorder()
+	server.ServeHTTP(fullResponse, fullRequest)
+	if fullResponse.Code != http.StatusOK || !bytes.Equal(fullResponse.Body.Bytes(), content) {
+		t.Fatalf("legacy full content changed: status %d body %q", fullResponse.Code, fullResponse.Body.String())
+	}
+
+	rangeRequest := httptest.NewRequest(http.MethodGet, "/api/download?file=document.md", nil)
+	rangeRequest.Header.Set("Range", "bytes=3-6")
+	rangeResponse := httptest.NewRecorder()
+	server.ServeHTTP(rangeResponse, rangeRequest)
+	if rangeResponse.Code != http.StatusPartialContent || rangeResponse.Body.String() != "3456" {
+		t.Fatalf("download range = status %d body %q", rangeResponse.Code, rangeResponse.Body.String())
+	}
+}
+
+func TestAPI_StatusSnapshot(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Version = "v-test"
+	server := NewServer(cfg, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status returned %d", response.Code)
+	}
+	var result struct {
+		Status    string `json:"status"`
+		Version   string `json:"version"`
+		TokenMode string `json:"token_mode"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "ready" || result.Version != "v-test" || result.TokenMode == "" {
+		t.Fatalf("unexpected status snapshot: %+v", result)
+	}
+}
+
 func TestAPI_BookmarksFlow(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.BookmarkFile = filepath.Join(t.TempDir(), "bookmarks.json")

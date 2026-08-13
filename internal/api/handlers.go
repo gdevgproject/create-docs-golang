@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"codedocs/internal/bookmarks"
 	"codedocs/internal/config"
@@ -32,8 +31,7 @@ func (s *Server) handleSaveBookmark(w http.ResponseWriter, r *http.Request) {
 		Note string `json:"note"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+	if !s.decodeJSONBody(w, r, &body, maxJSONBodyBytes) {
 		return
 	}
 
@@ -63,8 +61,7 @@ func (s *Server) handleUpdateBookmark(w http.ResponseWriter, r *http.Request) {
 		OrderedIDs []string `json:"ordered_ids"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+	if !s.decodeJSONBody(w, r, &body, maxJSONBodyBytes) {
 		return
 	}
 
@@ -96,8 +93,7 @@ func (s *Server) handleDeleteBookmark(w http.ResponseWriter, r *http.Request) {
 		ID string `json:"id"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+	if !s.decodeJSONBody(w, r, &body, maxJSONBodyBytes) {
 		return
 	}
 
@@ -124,8 +120,7 @@ func (s *Server) handleDeleteBookmarkHistory(w http.ResponseWriter, r *http.Requ
 		GeneratedAt string `json:"generated_at"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+	if !s.decodeJSONBody(w, r, &body, maxJSONBodyBytes) {
 		return
 	}
 
@@ -161,8 +156,7 @@ func (s *Server) handleRenameBookmarkHistory(w http.ResponseWriter, r *http.Requ
 		Label       string `json:"label"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.jsonError(w, "Invalid JSON body", http.StatusBadRequest)
+	if !s.decodeJSONBody(w, r, &body, maxJSONBodyBytes) {
 		return
 	}
 
@@ -199,8 +193,11 @@ func (s *Server) handleExportBookmarks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleImportBookmarks(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil || len(bodyBytes) == 0 {
+	bodyBytes, ok := s.readBody(w, r, maxImportBytes)
+	if !ok {
+		return
+	}
+	if len(bodyBytes) == 0 {
 		s.jsonError(w, "Import payload is empty", http.StatusBadRequest)
 		return
 	}
@@ -260,56 +257,65 @@ func (s *Server) handleGetExclusions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetContent(w http.ResponseWriter, r *http.Request) {
-	fileParam := filepath.Base(r.URL.Query().Get("file"))
-	if fileParam == "" || fileParam == "." || fileParam == "/" {
-		http.Error(w, "Invalid file parameter", http.StatusBadRequest)
-		return
-	}
-
-	targetPath := filepath.Join(s.cfg.TempDir, fileParam)
-	data, err := os.ReadFile(targetPath)
+	file, info, _, err := s.openGeneratedFile(r.URL.Query().Get("file"))
 	if err != nil {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte("File không tồn tại hoặc đã bị xóa."))
+		http.Error(w, "Generated file was not found", http.StatusNotFound)
 		return
 	}
+	defer file.Close()
+
+	offset, err := parseOffsetOrLimit(r.URL.Query().Get("offset"), 0)
+	if err != nil {
+		http.Error(w, "Invalid content offset", http.StatusBadRequest)
+		return
+	}
+	hasLimit := strings.TrimSpace(r.URL.Query().Get("limit")) != ""
+	limit, err := parseOffsetOrLimit(r.URL.Query().Get("limit"), info.Size())
+	if err != nil {
+		http.Error(w, "Invalid content limit", http.StatusBadRequest)
+		return
+	}
+	if hasLimit {
+		limit = min(limit, int64(maxPreviewBytes))
+	}
+	if offset > info.Size() || (offset == info.Size() && info.Size() > 0) {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", info.Size()))
+		http.Error(w, "Content offset is outside the file", http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+	length := min(limit, info.Size()-offset)
+	end := offset + length
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Write(data)
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+	w.Header().Set("X-Content-Size", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("X-Content-Offset", strconv.FormatInt(offset, 10))
+	w.Header().Set("X-Content-Length", strconv.FormatInt(length, 10))
+	w.Header().Set("X-Content-Truncated", strconv.FormatBool(end < info.Size()))
+	if offset > 0 || end < info.Size() {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", offset, max(offset, end-1), info.Size()))
+		w.WriteHeader(http.StatusPartialContent)
+	}
+	_, _ = io.CopyN(w, io.NewSectionReader(file, offset, length), length)
 }
 
 func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
-	fileParam := filepath.Base(r.URL.Query().Get("file"))
+	fileParam := r.URL.Query().Get("file")
 	if fileParam == "" {
-		fileParam = filepath.Base(r.URL.Query().Get("download"))
+		fileParam = r.URL.Query().Get("download")
 	}
-	if fileParam == "" || fileParam == "." || fileParam == "/" {
-		http.Error(w, "File không tồn tại hoặc đã hết hạn.", http.StatusBadRequest)
-		return
-	}
-
-	targetPath := filepath.Join(s.cfg.TempDir, fileParam)
-	info, err := os.Stat(targetPath)
+	file, info, fileName, err := s.openGeneratedFile(fileParam)
 	if err != nil {
-		http.Error(w, "File không tồn tại hoặc đã hết hạn.", http.StatusNotFound)
+		http.Error(w, "Generated file was not found", http.StatusNotFound)
 		return
 	}
+	defer file.Close()
 
-	w.Header().Set("Content-Description", "File Transfer")
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fileParam))
-	w.Header().Set("Expires", "0")
-	w.Header().Set("Cache-Control", "must-revalidate")
-	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-
-	f, err := os.Open(targetPath)
-	if err != nil {
-		http.Error(w, "Error reading file", http.StatusInternalServerError)
-		return
-	}
-	defer f.Close()
-
-	io.Copy(w, f)
+	w.Header().Set("Content-Disposition", attachmentHeader(fileName))
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, fileName, info.ModTime(), file)
 }
 
 func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
@@ -422,8 +428,7 @@ func (s *Server) handleDownloadUpdate(w http.ResponseWriter, r *http.Request) {
 		DownloadURL string `json:"download_url"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.jsonError(w, "Invalid request body", http.StatusBadRequest)
+	if !s.decodeJSONBody(w, r, &body, maxJSONBodyBytes) {
 		return
 	}
 
@@ -445,6 +450,17 @@ func (s *Server) handleDownloadUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetUpdateProgress(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, s.updateManager.GetProgress())
+}
+
+func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
+	s.jsonResponse(w, map[string]any{
+		"status":        "ready",
+		"version":       s.cfg.Version,
+		"token_mode":    s.tok.Mode(),
+		"workers":       s.cfg.Workers,
+		"max_file_size": s.cfg.MaxFileSize,
+		"update":        s.updateManager.GetProgress(),
+	})
 }
 
 func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
@@ -477,7 +493,7 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	s.jsonResponse(w, map[string]string{"status": "pong"})
+	s.jsonResponse(w, map[string]string{"status": "pong", "version": s.cfg.Version})
 }
 
 func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
@@ -485,14 +501,13 @@ func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 		Text string `json:"text"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		s.jsonError(w, "Invalid JSON payload", http.StatusBadRequest)
+	if !s.decodeJSONBody(w, r, &body, maxTokenBodyBytes) {
 		return
 	}
 
 	tokens := s.tok.CountTokens(body.Text)
 	mode := s.tok.Mode()
-	chars := len(body.Text)
+	chars := utf8.RuneCountInString(body.Text)
 	lines := strings.Count(body.Text, "\n") + 1
 	if body.Text == "" {
 		lines = 0
