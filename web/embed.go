@@ -5,7 +5,7 @@ import (
 	"io/fs"
 )
 
-//go:embed index.html style.css app.js favicon.ico icon.png
+//go:embed index.html style.css app.js favicon.ico js/*.js
 var embedFS embed.FS
 
 // GetFS returns an fs.FS sub-filesystem serving web assets directly

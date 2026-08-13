@@ -2,111 +2,134 @@ package web
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestFrontend_AppJsSyntax verifies that web/app.js is free of JavaScript syntax errors using node -c
-func TestFrontend_AppJsSyntax(t *testing.T) {
+func TestFrontendJavaScriptSyntax(t *testing.T) {
 	nodePath, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("node executable not found on system, skipping JS syntax check")
+		t.Skip("node executable not found")
 	}
-
-	cmd := exec.Command(nodePath, "-c", "app.js")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("web/app.js syntax check failed: %v\nStderr: %s", err, stderr.String())
+	files := []string{"app.js"}
+	err = filepath.WalkDir("js", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && filepath.Ext(path) == ".js" {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		t.Run(filepath.ToSlash(file), func(t *testing.T) {
+			command := exec.Command(nodePath, "--check", file)
+			var stderr bytes.Buffer
+			command.Stderr = &stderr
+			if err := command.Run(); err != nil {
+				t.Fatalf("%s syntax check failed: %v\n%s", file, err, stderr.String())
+			}
+		})
 	}
 }
 
-// TestFrontend_RequiredDOMElementIDs verifies that web/index.html contains all critical DOM element IDs required by web/app.js
-func TestFrontend_RequiredDOMElementIDs(t *testing.T) {
+func TestFrontendRequiredDOMElementIDs(t *testing.T) {
 	htmlBytes, err := os.ReadFile("index.html")
 	if err != nil {
-		t.Fatalf("failed to read index.html: %v", err)
+		t.Fatal(err)
 	}
-	htmlContent := string(htmlBytes)
-
+	html := string(htmlBytes)
 	requiredIDs := []string{
-		"path-input",
-		"btn-add-bm",
-		"bm-note",
-		"bm-list",
-		"bm-count",
-		"history-panel",
-		"hp-bm-name",
-		"hp-timeline",
-		"btn-hp-clear",
-		"ver-info",
-		"btn-manual-check",
-		"btn-check-update",
-		"update-card",
-		"update-card-title",
-		"update-card-pct",
-		"update-progress-fill",
-		"update-card-sub",
-		"btn-restart-now",
-		"stats-cards",
-		"stat-files",
-		"stat-lines",
-		"stat-tokens",
-		"stat-size",
-		"stat-time",
-		"stat-date",
-		"btn-gen",
-		"btn-copy",
-		"btn-download",
-		"btn-load",
-		"editor",
-		"status-panel",
-		"percent-text",
-		"progress-fill",
-		"log-text",
-		"btn-export-bm",
-		"btn-import-bm",
-		"import-file-input",
+		"path-input", "btn-add-bm", "bm-note", "bm-list", "bm-count",
+		"projects-panel", "history-panel", "hp-bm-name", "hp-timeline",
+		"btn-hp-clear", "ver-info", "btn-manual-check", "btn-check-update",
+		"update-card", "update-card-title", "update-card-pct",
+		"update-progress-fill", "update-card-sub", "btn-download-update",
+		"btn-release-notes", "btn-restart-now", "stats-cards", "stat-files",
+		"stat-lines", "stat-tokens", "stat-size", "stat-time", "stat-date",
+		"btn-gen", "btn-cancel-gen", "btn-copy", "btn-download", "btn-load",
+		"editor", "empty-state", "status-panel", "percent-text",
+		"progress-fill", "log-text", "btn-export-bm", "btn-import-bm",
+		"import-file-input", "btn-toggle-projects", "btn-toggle-history",
+		"modal-dialog", "modal-content", "toast",
 	}
-
 	for _, id := range requiredIDs {
-		expectedAttr := `id="` + id + `"`
-		if !strings.Contains(htmlContent, expectedAttr) {
-			t.Errorf("web/index.html is missing required DOM element ID: %q", id)
+		if !strings.Contains(html, `id="`+id+`"`) {
+			t.Errorf("index.html is missing id %q", id)
 		}
 	}
 }
 
-// TestFrontend_AsyncSSEEventListeners verifies that event listeners containing await calls in web/app.js use async callbacks
-func TestFrontend_AsyncSSEEventListeners(t *testing.T) {
-	jsBytes, err := os.ReadFile("app.js")
+func TestFrontendGenerationCompletionHandlerIsAsync(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("js", "generator.js"))
 	if err != nil {
-		t.Fatalf("failed to read app.js: %v", err)
+		t.Fatal(err)
 	}
-	jsContent := string(jsBytes)
-
-	// Verify complete event listener uses async e => or async (e) =>
-	if strings.Contains(jsContent, "addEventListener('complete', e =>") || strings.Contains(jsContent, "addEventListener('complete', (e) =>") {
-		t.Errorf("web/app.js contains synchronous addEventListener('complete', ...) callback which causes SyntaxError when calling await!")
-	}
-
-	if !strings.Contains(jsContent, "addEventListener('complete', async e =>") && !strings.Contains(jsContent, "addEventListener('complete', async (e) =>") {
-		t.Errorf("web/app.js does not contain expected async addEventListener('complete', async ...) handler!")
+	source := string(content)
+	if !strings.Contains(source, "addEventListener('complete', async (event) =>") {
+		t.Error("generation completion listener must remain async")
 	}
 }
 
-// TestFrontend_NoLegacyModalReferences verifies that app.js does not contain dead references to legacy history modal
-func TestFrontend_NoLegacyModalReferences(t *testing.T) {
-	jsBytes, err := os.ReadFile("app.js")
+func TestFrontendHasNoHeartbeatOrKnownMojibake(t *testing.T) {
+	files := []string{"index.html", "style.css", "app.js"}
+	moduleFiles, err := filepath.Glob(filepath.Join("js", "*.js"))
 	if err != nil {
-		t.Fatalf("failed to read app.js: %v", err)
+		t.Fatal(err)
 	}
-	jsContent := string(jsBytes)
+	files = append(files, moduleFiles...)
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		source := string(content)
+		if strings.Contains(source, "setInterval(sendPing") || strings.Contains(source, "function sendPing") {
+			t.Errorf("%s contains the obsolete heartbeat", file)
+		}
+		for _, marker := range []string{"Ã", "Â", "â€”", "ðŸ"} {
+			if strings.Contains(source, marker) {
+				t.Errorf("%s contains mojibake marker %q", file, marker)
+			}
+		}
+	}
+}
 
-	if strings.Contains(jsContent, "historyModal:") || strings.Contains(jsContent, "showHistoryModal") {
-		t.Errorf("web/app.js still contains legacy modal references after migrating to persistent right history panel!")
+func TestFrontendModulesAreEmbedded(t *testing.T) {
+	embedded := GetFS()
+	for _, path := range []string{
+		"app.js",
+		"js/core.js",
+		"js/bookmarks.js",
+		"js/generator.js",
+		"js/tools.js",
+		"js/updater.js",
+	} {
+		file, err := embedded.Open(path)
+		if err != nil {
+			t.Errorf("embedded frontend is missing %s: %v", path, err)
+			continue
+		}
+		_ = file.Close()
+	}
+}
+
+func TestFrontendResponsiveBreakpoints(t *testing.T) {
+	content, err := os.ReadFile("style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(content)
+	for _, breakpoint := range []string{"@media (max-width: 1280px)", "@media (max-width: 920px)", "@media (max-width: 760px)"} {
+		if !strings.Contains(css, breakpoint) {
+			t.Errorf("style.css is missing responsive breakpoint %s", breakpoint)
+		}
 	}
 }

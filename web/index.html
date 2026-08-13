@@ -1,229 +1,216 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodePulse AI — Next-Gen Code Context Engine</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>CodeDocs</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- ══ SIDEBAR ══ -->
-  <aside class="sidebar">
-    <div class="brand">
-      <svg class="brand-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-      </svg>
-      <div class="brand-text">
-        <span class="brand-title">CodePulse AI</span>
-        <span class="brand-badge" id="app-version">v1.4.3</span>
-      </div>
-    </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <button type="button" class="icon-button panel-toggle" id="btn-toggle-projects" aria-label="Toggle projects" title="Projects">
+        <span aria-hidden="true">☰</span>
+      </button>
 
-    <!-- SECTION 1: TARGET PATH & CORE ACTIONS -->
-    <div class="sidebar-section">
-      <div class="input-group">
-        <label class="input-label" for="path-input">Target Project Path</label>
-        <input type="text" id="path-input" class="input-control" placeholder="e.g. D:/projects/my-app or /var/www/project">
-      </div>
-
-      <div class="btn-group vertical">
-        <button class="btn btn-primary btn-block" id="btn-gen">⚡ Generate Context</button>
-        <button class="btn btn-secondary btn-block" id="btn-struct">🌳 Directory Tree</button>
-      </div>
-    </div>
-
-    <hr class="divider">
-
-    <!-- SECTION 2: OUTPUT MODE -->
-    <div class="sidebar-section">
-      <label class="input-label">Generation Mode</label>
-      <div class="mode-selector" id="mode-selector">
-        <label class="mode-btn">
-          <input type="radio" name="gen-mode" value="full">
-          <span>📄 Full Content</span>
-        </label>
-        <label class="mode-btn">
-          <input type="radio" name="gen-mode" value="stats" checked>
-          <span>📊 Stats Only</span>
-        </label>
-      </div>
-    </div>
-
-    <hr class="divider">
-
-    <!-- SECTION 3: UTILITY TOOLS -->
-    <div class="sidebar-section">
-      <label class="input-label">Developer Tools</label>
-      <div class="btn-group">
-        <button class="btn btn-ghost" id="btn-counter" style="flex:1;">🧮 Token Counter</button>
-        <button class="btn btn-ghost" id="btn-exclusions" style="flex:1;">🚫 Ignored List</button>
-      </div>
-    </div>
-
-    <hr class="divider">
-
-    <!-- SECTION 4: BOOKMARKS -->
-    <div class="sidebar-section flex-1">
-      <div class="bm-header">
-        <div class="bm-title-group">
-          <label class="input-label">Saved Bookmarks</label>
-          <span class="bm-count" id="bm-count">0</span>
-        </div>
-        <div class="bm-tools-row">
-          <button class="btn btn-ghost btn-xs" id="btn-export-bm" title="Export bookmarks backup JSON">📤 Backup</button>
-          <button class="btn btn-ghost btn-xs" id="btn-import-bm" title="Import bookmarks backup JSON">📥 Restore</button>
-          <input type="file" id="import-file-input" accept=".json" style="display:none;">
+      <div class="brand" aria-label="CodeDocs">
+        <img class="brand-icon" src="favicon.ico" alt="">
+        <div class="brand-copy">
+          <strong>CodeDocs</strong>
+          <span id="app-version">v1.7.8</span>
         </div>
       </div>
 
-      <div class="bm-add-row">
-        <input type="text" id="bm-note" class="input-control" placeholder="Project label...">
-        <button class="btn btn-secondary btn-icon" id="btn-add-bm" title="Save current path">＋</button>
+      <div class="path-command">
+        <label class="sr-only" for="path-input">Project path</label>
+        <span class="path-mark" aria-hidden="true">›_</span>
+        <input id="path-input" class="path-input" type="text" autocomplete="off" spellcheck="false" placeholder="Paste a project path">
+        <kbd>Ctrl ↵</kbd>
       </div>
 
-      <div class="bookmarks-area" id="bm-list">
-        <div class="bm-empty">No bookmarks saved yet</div>
+      <div class="top-actions">
+        <button type="button" class="button subtle compact" id="btn-struct" title="Scan directory tree">Tree</button>
+        <button type="button" class="button primary" id="btn-gen">Generate</button>
+        <button type="button" class="button danger" id="btn-cancel-gen" hidden>Cancel</button>
+        <button type="button" class="icon-button panel-toggle" id="btn-toggle-history" aria-label="Toggle history" title="History">
+          <span aria-hidden="true">◷</span>
+        </button>
       </div>
-    </div>
+    </header>
 
-    <hr class="divider">
-
-    <!-- SECTION 5: FOOTER VERSION & IN-PLACE UPDATER -->
-    <div class="version-container">
-      <div class="version-row">
-        <span class="version-text" id="ver-info">CodePulse AI v1.7.2</span>
-        <button class="btn btn-ghost sm" id="btn-manual-check" style="font-size:0.7rem; padding:2px 8px;" title="Check GitHub for Updates">🔄 Check Update</button>
-        <button class="btn-update-badge" id="btn-check-update" style="display:none;" title="Click to download update">✨ Update Available</button>
-      </div>
-
-      <!-- IN-PLACE UPDATE PROGRESS & RESTART CONTAINER -->
-      <div class="update-card" id="update-card" style="display:none;">
-        <div class="update-card-header">
-          <span class="update-card-title" id="update-card-title">Downloading Update...</span>
-          <span class="update-card-pct" id="update-card-pct">0%</span>
+    <aside class="projects-panel" id="projects-panel" aria-label="Projects panel">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">Workspace</span>
+          <h2>Projects</h2>
         </div>
-        <div class="update-progress-bar">
-          <div class="update-progress-fill" id="update-progress-fill"></div>
-        </div>
-        <div class="update-card-footer">
-          <span class="update-card-sub" id="update-card-sub">Connecting to GitHub...</span>
-          <button class="btn btn-primary sm btn-restart-now" id="btn-restart-now" style="display:none;">🚀 Restart App Now</button>
-        </div>
+        <button type="button" class="icon-button panel-close" id="btn-close-projects" aria-label="Close projects">×</button>
       </div>
-    </div>
-  </aside>
 
-  <!-- ══ MAIN CONTENT ══ -->
-  <main class="main">
-    <div class="preview-container">
-      <header class="preview-header">
-        <div class="preview-left">
-          <span class="preview-title">DOCUMENT PREVIEW</span>
-          <span class="status-badge badge-idle" id="file-badge">Ready</span>
-          
-          <div class="stats-cards" id="stats-cards" style="display:none;">
-            <div class="stat-card">
-              <span class="stat-lbl">FILES</span>
-              <span class="stat-val" id="stat-files">–</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-lbl">LINES</span>
-              <span class="stat-val" id="stat-lines">–</span>
-            </div>
-            <div class="stat-card" id="card-tokens">
-              <span class="stat-lbl">TOKENS</span>
-              <span class="stat-val" id="stat-tokens">–</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-lbl">SIZE</span>
-              <span class="stat-val" id="stat-size">–</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-lbl">TIME</span>
-              <span class="stat-val" id="stat-time">–</span>
-            </div>
-            <div class="stat-card" id="card-date" title="Exact local generation timestamp">
-              <span class="stat-lbl">LOCAL TIME</span>
-              <span class="stat-val" id="stat-date">–</span>
-            </div>
+      <section class="panel-section">
+        <div class="segmented" id="mode-selector" aria-label="Generation mode">
+          <label>
+            <input type="radio" name="gen-mode" value="stats" checked>
+            <span>Fast</span>
+          </label>
+          <label>
+            <input type="radio" name="gen-mode" value="full">
+            <span>Full</span>
+          </label>
+        </div>
+        <p class="section-hint" id="mode-hint">Fast scans now; content loads only when needed.</p>
+      </section>
+
+      <section class="panel-section bookmark-section">
+        <div class="section-title-row">
+          <div class="section-title">
+            <span>Saved</span>
+            <span class="count-pill" id="bm-count">0</span>
+          </div>
+          <div class="inline-tools">
+            <button type="button" class="text-button" id="btn-export-bm" title="Export backup">Export</button>
+            <button type="button" class="text-button" id="btn-import-bm" title="Import backup">Import</button>
+            <input type="file" id="import-file-input" accept="application/json,.json" hidden>
           </div>
         </div>
 
-        <div class="actions">
-          <button class="action-btn ghost" id="btn-load" style="display:none">📄 Load Content</button>
-          <button class="action-btn ghost" id="btn-copy" disabled>📋 Copy Docs</button>
-          <a href="#" id="btn-download" class="action-btn primary" disabled>⬇ Download .md</a>
+        <div class="save-row">
+          <label class="sr-only" for="bm-note">Project name</label>
+          <input id="bm-note" class="control" type="text" maxlength="120" placeholder="Project name">
+          <button type="button" class="icon-button save-button" id="btn-add-bm" aria-label="Save project" title="Save project">＋</button>
+        </div>
+
+        <div class="bookmarks-area" id="bm-list">
+          <div class="empty-mini">No saved projects</div>
+        </div>
+      </section>
+
+      <section class="utility-row" aria-label="Tools">
+        <button type="button" class="tool-button" id="btn-counter">
+          <span class="tool-icon" aria-hidden="true">#</span>
+          <span>Tokens</span>
+        </button>
+        <button type="button" class="tool-button" id="btn-exclusions">
+          <span class="tool-icon" aria-hidden="true">⊘</span>
+          <span>Ignored</span>
+        </button>
+      </section>
+
+      <section class="update-dock" aria-label="Application update">
+        <div class="version-row">
+          <span class="version-text" id="ver-info">CodeDocs</span>
+          <button type="button" class="icon-button tiny" id="btn-manual-check" title="Check for updates" aria-label="Check for updates">↻</button>
+          <button type="button" class="update-badge" id="btn-check-update" hidden>Update</button>
+        </div>
+
+        <div class="update-card" id="update-card" hidden>
+          <div class="update-card-head">
+            <strong id="update-card-title">Update available</strong>
+            <span id="update-card-pct">0%</span>
+          </div>
+          <div class="thin-progress" aria-hidden="true">
+            <div id="update-progress-fill"></div>
+          </div>
+          <p id="update-card-sub">Verified release</p>
+          <div class="update-actions">
+            <button type="button" class="text-button" id="btn-release-notes" hidden>Notes</button>
+            <button type="button" class="button subtle compact" id="btn-download-update" hidden>Download</button>
+            <button type="button" class="button primary compact" id="btn-restart-now" hidden>Restart</button>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <section class="output-card" aria-label="Generated output">
+        <header class="output-header">
+          <div class="output-summary">
+            <div class="output-title-row">
+              <h1>Output</h1>
+              <span class="status-badge idle" id="file-badge">Ready</span>
+            </div>
+            <div class="stats-cards" id="stats-cards" hidden>
+              <div class="stat-chip"><span>Files</span><strong id="stat-files">—</strong></div>
+              <div class="stat-chip"><span>Lines</span><strong id="stat-lines">—</strong></div>
+              <div class="stat-chip" id="card-tokens"><span>Tokens</span><strong id="stat-tokens">—</strong></div>
+              <div class="stat-chip"><span>Size</span><strong id="stat-size">—</strong></div>
+              <div class="stat-chip"><span>Time</span><strong id="stat-time">—</strong></div>
+            </div>
+            <span class="result-date" id="stat-date"></span>
+          </div>
+
+          <div class="output-actions">
+            <button type="button" class="button subtle compact" id="btn-load" hidden>Load all</button>
+            <button type="button" class="button subtle compact" id="btn-copy" disabled>Copy</button>
+            <a class="button primary compact disabled" id="btn-download" href="#" aria-disabled="true">Download</a>
+          </div>
+        </header>
+
+        <div class="editor-wrapper">
+          <div class="preview-banner" id="virtual-banner" hidden>
+            <span id="v-banner-text">Preview only</span>
+            <div>
+              <button type="button" class="text-button" id="btn-render-all">Load all</button>
+              <button type="button" class="text-button danger-text" id="btn-stop-render" hidden>Stop</button>
+            </div>
+          </div>
+
+          <label class="sr-only" for="editor">Generated document</label>
+          <textarea id="editor" class="code-editor" readonly spellcheck="false"></textarea>
+          <div class="empty-state" id="empty-state">
+            <div class="empty-glyph" aria-hidden="true">&lt;/&gt;</div>
+            <strong>Ready for a project</strong>
+            <span>Paste a path and press Ctrl + Enter</span>
+          </div>
+
+          <div class="progress-panel" id="status-panel" hidden aria-live="polite">
+            <div class="progress-head">
+              <span><i class="activity-dot"></i><strong id="log-text">Preparing scan</strong></span>
+              <strong id="percent-text">0%</strong>
+            </div>
+            <div class="progress-track"><div id="progress-fill"></div></div>
+            <span class="progress-speed" id="speed-text"></span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="history-panel" id="history-panel" aria-label="Scan history">
+      <div class="panel-heading">
+        <div>
+          <span class="eyebrow">Timeline</span>
+          <h2 id="hp-bm-name">History</h2>
+        </div>
+        <div class="panel-heading-actions">
+          <button type="button" class="text-button danger-text" id="btn-hp-clear" hidden>Clear</button>
+          <button type="button" class="icon-button panel-close" id="btn-close-history" aria-label="Close history">×</button>
+        </div>
+      </div>
+      <div class="history-content" id="hp-timeline">
+        <div class="empty-mini">Select a saved project</div>
+      </div>
+    </aside>
+
+    <button type="button" class="panel-backdrop" id="panel-backdrop" aria-label="Close panel" tabindex="-1"></button>
+  </div>
+
+  <div class="modal-overlay" id="modal-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-box">
+      <header class="modal-head">
+        <h2 id="modal-title">Details</h2>
+        <div class="modal-actions">
+          <button type="button" class="button subtle compact" id="btn-copy-modal" hidden>Copy</button>
+          <button type="button" class="button primary compact" id="btn-modal-primary" hidden>Save</button>
+          <button type="button" class="icon-button" id="btn-close-modal" aria-label="Close dialog">×</button>
         </div>
       </header>
-
-      <div class="editor-wrapper">
-        <!-- HIGH-PERFORMANCE VIRTUAL PREVIEW CONTROL BANNER -->
-        <div class="virtual-banner" id="virtual-banner" style="display:none;">
-          <div class="v-banner-left">
-            <span class="v-pulse-icon">⚡</span>
-            <span class="v-banner-text" id="v-banner-text">High-Performance Fast Preview Mode</span>
-          </div>
-          <div class="v-banner-actions">
-            <button class="action-btn ghost sm" id="btn-render-all">📄 Load All Lines (Async)</button>
-            <button class="action-btn ghost sm" id="btn-stop-render" style="display:none; color:var(--accent-red); border-color:var(--accent-red);">⏸ Stop Rendering</button>
-          </div>
-        </div>
-
-        <textarea id="editor" class="code-editor" readonly placeholder="Documentation XML output will appear here after clicking Generate..."></textarea>
-
-        <!-- PROGRESS OVERLAY -->
-        <div class="overlay-status" id="status-panel">
-          <div class="overlay-top">
-            <div class="overlay-title">
-              <span class="pulse-dot"></span>
-              <span>Generating Codebase Docs...</span>
-            </div>
-            <span class="overlay-pct" id="percent-text">0%</span>
-          </div>
-          <div class="progress-bar-track">
-            <div class="progress-bar-fill" id="progress-fill"></div>
-          </div>
-          <div class="overlay-sub">
-            <span class="overlay-speed" id="speed-text"></span>
-            <span class="overlay-log" id="log-text">Initializing worker pool...</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <!-- ══ RIGHT HISTORY PANEL ══ -->
-  <aside class="history-panel" id="history-panel">
-    <div class="hp-header">
-      <div class="hp-title-group">
-        <span class="hp-title">📜 Scan History</span>
-        <span class="hp-bm-name" id="hp-bm-name">Select a bookmark</span>
-      </div>
-      <button class="btn btn-ghost btn-xs text-danger" id="btn-hp-clear" style="display:none;" title="Clear history for active bookmark">🗑️ Clear</button>
-    </div>
-    <div class="hp-content" id="hp-timeline">
-      <div class="bm-empty">Select a saved bookmark to view its real-time scan history timeline.</div>
-    </div>
-  </aside>
-
-  <!-- ══ DIALOG / MODAL ══ -->
-  <div class="modal-overlay" id="modal-dialog" style="display:none;">
-    <div class="modal-box">
-      <div class="modal-head">
-        <span id="modal-title">Modal Title</span>
-        <div class="modal-actions">
-          <button class="btn btn-secondary sm" id="btn-copy-modal">Copy</button>
-          <button class="btn btn-ghost sm" id="btn-close-modal">✕ Close</button>
-        </div>
-      </div>
       <div class="modal-body" id="modal-content"></div>
     </div>
   </div>
 
-  <!-- TOAST NOTIFICATION -->
-  <div class="toast" id="toast"></div>
-
-  <script src="app.js"></script>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
