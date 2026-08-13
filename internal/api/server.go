@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
+	"sync"
 
 	"codedocs/internal/bookmarks"
 	"codedocs/internal/config"
@@ -22,9 +25,29 @@ type Server struct {
 	bm    *bookmarks.Manager
 	webFS fs.FS
 	mux   *http.ServeMux
+
+	shutdownFn   func()
+	shutdownOnce sync.Once
+	localOnly    bool
 }
 
-func NewServer(cfg *config.Config, webFS fs.FS) *Server {
+// Option configures optional desktop-only server behavior while preserving the
+// original NewServer(cfg, fs) construction contract for embedders and tests.
+type Option func(*Server)
+
+func WithShutdown(fn func()) Option {
+	return func(s *Server) {
+		s.shutdownFn = fn
+	}
+}
+
+func WithLocalAccessOnly() Option {
+	return func(s *Server) {
+		s.localOnly = true
+	}
+}
+
+func NewServer(cfg *config.Config, webFS fs.FS, options ...Option) *Server {
 	if cfg == nil {
 		cfg = config.DefaultConfig()
 	}
@@ -42,6 +65,11 @@ func NewServer(cfg *config.Config, webFS fs.FS) *Server {
 		bm:    bm,
 		webFS: webFS,
 		mux:   http.NewServeMux(),
+	}
+	for _, option := range options {
+		if option != nil {
+			option(s)
+		}
 	}
 
 	// Warm up tiktoken o200k_base dictionary in background on startup for 0ms cold start
@@ -148,5 +176,55 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	if s.localOnly && !isLocalRequest(r) {
+		http.Error(w, "local access only", http.StatusForbidden)
+		return
+	}
+
+	setSecurityHeaders(w)
+	if !strings.Contains(r.URL.Path, "/api/") {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	}
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) requestShutdown() {
+	if s.shutdownFn == nil {
+		return
+	}
+	s.shutdownOnce.Do(s.shutdownFn)
+}
+
+func isLocalRequest(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
+		return false
+	}
+
+	remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	remoteIP := net.ParseIP(strings.Trim(remoteHost, "[]"))
+	if remoteIP == nil || !remoteIP.IsLoopback() {
+		return false
+	}
+
+	host := r.Host
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	hostIP := net.ParseIP(host)
+	return hostIP != nil && hostIP.IsLoopback()
+}
+
+func setSecurityHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; img-src 'self' data:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
 }

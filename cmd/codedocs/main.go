@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -18,93 +19,127 @@ import (
 	"codedocs/web"
 )
 
-func main() {
-	updater.CleanupOldFiles()
-	cfg := config.ParseFlags()
+const (
+	portSearchLimit = 10
+	shutdownTimeout = 5 * time.Second
+)
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+func main() {
+	os.Exit(run())
+}
+
+func run() int {
+	cfg := config.ParseFlags()
+	updater.CleanupOldFiles()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// Auto find available port if default port is occupied
-	listener, err := findAvailableListener(cfg.Host, cfg.Port, 10)
+	appCtx, cancelApp := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancelApp()
+
+	listener, err := findAvailableListener(cfg.Host, cfg.Port, portSearchLimit)
 	if err != nil {
-		slog.Error("Failed to bind network port", "error", err)
-		os.Exit(1)
+		slog.Error("unable to start local server", "error", err)
+		return 1
 	}
 	defer listener.Close()
 
 	actualPort := listener.Addr().(*net.TCPAddr).Port
 	cfg.Port = actualPort
 
-	webFS := web.GetFS()
-	server := api.NewServer(cfg, webFS)
+	serverOptions := []api.Option{api.WithShutdown(cancelApp)}
+	if config.IsLoopbackHost(cfg.Host) {
+		serverOptions = append(serverOptions, api.WithLocalAccessOnly())
+	}
+	server := api.NewServer(cfg, web.GetFS(), serverOptions...)
 
 	httpServer := &http.Server{
-		Handler:      server,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 0, // 0 for unlimited SSE streaming
-		IdleTimeout:  120 * time.Second,
+		Handler:           server,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      0, // SSE streams remain open until their request context is cancelled.
+		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
-	appCtx, cancelApp := context.WithCancel(context.Background())
-	defer cancelApp()
-
-	shutdownComplete := make(chan struct{})
-
-	// Signal & App Cancellation handler
+	serveErr := make(chan error, 1)
 	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-		select {
-		case <-sigChan:
-			slog.Info("Received OS termination signal...")
-		case <-appCtx.Done():
-			slog.Info("App window closed. Shutting down application...")
+		err := httpServer.Serve(listener)
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
-
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer shutdownCancel()
-
-		_ = httpServer.Shutdown(shutdownCtx)
-		close(shutdownComplete)
-	}()
-
-	serverURL := fmt.Sprintf("http://localhost:%d%s", cfg.Port, cfg.BasePath)
-
-	fmt.Println("================================================================")
-	fmt.Printf("🚀 Codebase-to-Docs Generator (Go Edition %s)\n", cfg.Version)
-	fmt.Printf("🌐 Server running at: %s\n", serverURL)
-	fmt.Printf("⚡ Worker Pool: %d goroutines | Max File Size: %dMB\n", cfg.Workers, cfg.MaxFileSize/(1024*1024))
-	fmt.Println("================================================================")
-
-	go func() {
-		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("Server error", "error", err)
+		serveErr <- err
+		if err != nil {
+			slog.Error("local server stopped unexpectedly", "error", err)
 			cancelApp()
 		}
 	}()
 
-	// Open 100% Native Embedded Desktop GUI Window
+	serverURL := localServerURL(cfg)
+	slog.Info("CodePulse AI started",
+		"version", cfg.Version,
+		"url", serverURL,
+		"workers", cfg.Workers,
+		"max_file_mb", cfg.MaxFileSize/(1024*1024),
+	)
+
+	var windowErr error
 	if cfg.OpenBrowser {
-		openNativeWindow(serverURL, fmt.Sprintf("CodePulse AI %s", cfg.Version))
-		cancelApp()
+		windowErr = openNativeWindow(appCtx, serverURL, fmt.Sprintf("CodePulse AI %s", cfg.Version), cfg.CacheDir)
+		cancelApp() // Closing the native window owns the desktop application's lifetime.
 	} else {
-		<-shutdownComplete
+		<-appCtx.Done()
 	}
 
-	slog.Info("Application stopped cleanly. Zero background processes left.")
-	os.Exit(0)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer shutdownCancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Warn("graceful shutdown timed out; closing active connections", "error", err)
+		_ = httpServer.Close()
+	}
+
+	select {
+	case err := <-serveErr:
+		if err != nil {
+			return 1
+		}
+	default:
+	}
+
+	if windowErr != nil {
+		slog.Error("native window failed", "error", windowErr)
+		return 1
+	}
+
+	slog.Info("CodePulse AI stopped cleanly")
+	return 0
 }
 
-func findAvailableListener(host string, startPort int, maxTries int) (net.Listener, error) {
+func localServerURL(cfg *config.Config) string {
+	host := cfg.Host
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(cfg.Port)) + cfg.BasePath
+}
+
+func findAvailableListener(host string, startPort, maxTries int) (net.Listener, error) {
+	if maxTries < 1 || startPort == 0 {
+		maxTries = 1
+	}
+
+	var lastErr error
 	for i := 0; i < maxTries; i++ {
 		port := startPort + i
-		addr := fmt.Sprintf("%s:%d", host, port)
-		l, err := net.Listen("tcp", addr)
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
+		listener, err := net.Listen("tcp", addr)
 		if err == nil {
-			return l, nil
+			return listener, nil
 		}
+		lastErr = err
 	}
-	return nil, fmt.Errorf("no free ports found between %d and %d", startPort, startPort+maxTries-1)
+
+	endPort := startPort + maxTries - 1
+	return nil, fmt.Errorf("no available port in range %d-%d on %q: %w", startPort, endPort, host, lastErr)
 }

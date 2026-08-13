@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"codedocs/internal/config"
 )
@@ -33,6 +34,62 @@ func TestAPI_GetExclusions(t *testing.T) {
 
 	if len(res["dirs"]) == 0 || len(res["files"]) == 0 || len(res["extensions"]) == 0 {
 		t.Errorf("exclusions response missing expected arrays: %v", res)
+	}
+}
+
+func TestAPI_LocalAccessGuard(t *testing.T) {
+	server := NewServer(config.DefaultConfig(), nil, WithLocalAccessOnly())
+
+	allowed := httptest.NewRequest("GET", "http://127.0.0.1/api/ping", nil)
+	allowed.RemoteAddr = "127.0.0.1:54321"
+	allowed.Host = "127.0.0.1:8080"
+	allowedW := httptest.NewRecorder()
+	server.ServeHTTP(allowedW, allowed)
+	if allowedW.Code != http.StatusOK {
+		t.Fatalf("expected loopback request to pass, got %d", allowedW.Code)
+	}
+
+	for name, mutate := range map[string]func(*http.Request){
+		"remote client":  func(r *http.Request) { r.RemoteAddr = "192.0.2.1:1234" },
+		"host rebinding": func(r *http.Request) { r.Host = "attacker.example:8080" },
+		"cross-site":     func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "http://127.0.0.1/api/ping", nil)
+			req.RemoteAddr = "127.0.0.1:54321"
+			req.Host = "127.0.0.1:8080"
+			mutate(req)
+			w := httptest.NewRecorder()
+			server.ServeHTTP(w, req)
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("expected request to be rejected, got %d", w.Code)
+			}
+		})
+	}
+}
+
+func TestAPI_ShutdownUsesApplicationHookOnce(t *testing.T) {
+	called := make(chan struct{}, 2)
+	server := NewServer(config.DefaultConfig(), nil, WithShutdown(func() { called <- struct{}{} }))
+
+	for range 2 {
+		req := httptest.NewRequest("POST", "/api/shutdown", nil)
+		w := httptest.NewRecorder()
+		server.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("shutdown failed with status %d", w.Code)
+		}
+	}
+
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown hook was not called")
+	}
+	select {
+	case <-called:
+		t.Fatal("shutdown hook was called more than once")
+	case <-time.After(300 * time.Millisecond):
 	}
 }
 

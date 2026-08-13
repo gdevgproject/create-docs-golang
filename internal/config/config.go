@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -208,6 +209,16 @@ func NormalizeBasePath(p string) string {
 	return strings.TrimSuffix(p, "/")
 }
 
+// IsLoopbackHost reports whether host is intentionally limited to this machine.
+func IsLoopbackHost(host string) bool {
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	userCache, err := os.UserCacheDir()
@@ -234,7 +245,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version:      Version,
 		Port:         8080,
-		Host:         "0.0.0.0",
+		Host:         "127.0.0.1",
 		BasePath:     "",
 		MaxFileSize:  10485760, // 10MB
 		Workers:      workers,

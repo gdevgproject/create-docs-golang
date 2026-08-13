@@ -3,21 +3,28 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os/exec"
 	"runtime"
 )
 
-func openNativeWindow(url string, title string) {
+func openNativeWindow(ctx context.Context, url, title, cacheDir string) error {
 	var cmd *exec.Cmd
-
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", "-a", "Google Chrome", "--args", "--app="+url)
+		cmd = exec.Command("open", url)
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
 
-	if cmd != nil {
-		_ = cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("open browser: %w", err)
 	}
+	_ = cmd.Process.Release()
+
+	// A regular browser does not expose a reliable window-close callback. Keep the
+	// local server alive until an OS signal or the shutdown API cancels the app.
+	<-ctx.Done()
+	return nil
 }

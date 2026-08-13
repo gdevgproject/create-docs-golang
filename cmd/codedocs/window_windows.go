@@ -3,6 +3,9 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"path/filepath"
 	"syscall"
 	"unsafe"
 
@@ -10,46 +13,70 @@ import (
 )
 
 var (
-	moddwmapi                 = syscall.NewLazyDLL("dwmapi.dll")
-	procDwmSetWindowAttribute = moddwmapi.NewProc("DwmSetWindowAttribute")
+	modDWMAPI                 = syscall.NewLazyDLL("dwmapi.dll")
+	procDwmSetWindowAttribute = modDWMAPI.NewProc("DwmSetWindowAttribute")
 )
 
 const (
-	DWMWA_USE_IMMERSIVE_DARK_MODE     = 20
-	DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19
+	dwmwaUseImmersiveDarkMode    = 20
+	dwmwaUseImmersiveDarkModeOld = 19
+	appIconResourceID            = 2
+	defaultWindowWidth           = 1440
+	defaultWindowHeight          = 900
+	minimumWindowWidth           = 760
+	minimumWindowHeight          = 560
 )
 
 func setWindowDarkMode(hwnd uintptr) {
 	if hwnd == 0 {
 		return
 	}
+
 	darkMode := int32(1)
-	// Enable DWM Immersive Dark Mode for Windows 10 (1909+) and Windows 11 titlebar
-	_, _, _ = procDwmSetWindowAttribute.Call(
-		hwnd,
-		uintptr(DWMWA_USE_IMMERSIVE_DARK_MODE),
-		uintptr(unsafe.Pointer(&darkMode)),
-		unsafe.Sizeof(darkMode),
-	)
-	_, _, _ = procDwmSetWindowAttribute.Call(
-		hwnd,
-		uintptr(DWMWA_USE_IMMERSIVE_DARK_MODE_OLD),
-		uintptr(unsafe.Pointer(&darkMode)),
-		unsafe.Sizeof(darkMode),
-	)
+	for _, attribute := range []uintptr{dwmwaUseImmersiveDarkMode, dwmwaUseImmersiveDarkModeOld} {
+		_, _, _ = procDwmSetWindowAttribute.Call(
+			hwnd,
+			attribute,
+			uintptr(unsafe.Pointer(&darkMode)),
+			unsafe.Sizeof(darkMode),
+		)
+	}
 }
 
-func openNativeWindow(url string, title string) {
-	w := webview2.New(false)
-	if w != nil {
-		defer w.Destroy()
-		w.SetTitle(title)
-		w.SetSize(1280, 850, webview2.HintNone)
-
-		// Set sleek Win32 Native Dark Titlebar matching dark app theme
-		setWindowDarkMode(uintptr(w.Window()))
-
-		w.Navigate(url)
-		w.Run()
+func openNativeWindow(ctx context.Context, url, title, cacheDir string) error {
+	options := webview2.WebViewOptions{
+		Debug:     false,
+		AutoFocus: true,
+		DataPath:  filepath.Join(cacheDir, "webview2"),
+		WindowOptions: webview2.WindowOptions{
+			Title:  title,
+			Width:  defaultWindowWidth,
+			Height: defaultWindowHeight,
+			IconId: appIconResourceID,
+			Center: true,
+		},
 	}
+
+	w := webview2.NewWithOptions(options)
+	if w == nil {
+		return fmt.Errorf("WebView2 could not create a native window; install or repair the Microsoft Edge WebView2 Runtime")
+	}
+	defer w.Destroy()
+
+	w.SetSize(minimumWindowWidth, minimumWindowHeight, webview2.HintMin)
+	setWindowDarkMode(uintptr(w.Window()))
+	w.Navigate(url)
+
+	windowDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			w.Terminate()
+		case <-windowDone:
+		}
+	}()
+
+	w.Run()
+	close(windowDone)
+	return nil
 }
