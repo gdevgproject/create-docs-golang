@@ -225,24 +225,30 @@ func (s *Server) handleGetStructure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files, err := s.sc.ScanProjectFiles(path)
+	files, err := s.sc.ScanProjectFilesContext(r.Context(), path)
 	if err != nil {
 		s.jsonError(w, fmt.Sprintf("Không thể quét thư mục: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	totalFiles := len(files)
-	totalLines := s.sc.CountProjectLinesFast(files, s.cfg.MaxFileSize)
+	stats := s.sc.CountProjectStats(r.Context(), files, s.cfg.MaxFileSize, s.cfg.Workers)
+	totalLines := stats.Lines
 	localDate := time.Now().Local().Format("2006-01-02 15:04:05 (-07:00)")
 
 	treeString := fmt.Sprintf("<!-- Stats: %d files | %s lines of code | Date: %s -->\n", totalFiles, formatInt(totalLines), localDate)
 	treeString += scanner.GenerateDirectoryTree(path, files)
 
 	s.jsonResponse(w, map[string]any{
-		"status": "success",
-		"data":   treeString,
-		"count":  totalFiles,
-		"lines":  totalLines,
+		"status":           "success",
+		"data":             treeString,
+		"count":            totalFiles,
+		"lines":            totalLines,
+		"bytes":            stats.Bytes,
+		"text_files":       stats.TextFiles,
+		"binary_files":     stats.BinaryFiles,
+		"skipped_files":    stats.SkippedFiles,
+		"unreadable_files": stats.Unreadable,
 	})
 }
 

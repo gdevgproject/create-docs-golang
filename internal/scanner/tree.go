@@ -10,23 +10,16 @@ type treeNode map[string]treeNode
 
 // GenerateDirectoryTree generates an ASCII directory tree string matching tree command style
 func GenerateDirectoryTree(rootPath string, files []string) string {
-	cleanRoot := filepath.ToSlash(filepath.Clean(rootPath))
-	cleanRoot = strings.TrimSuffix(cleanRoot, "/")
-	prefixLen := len(cleanRoot) + 1
+	cleanRoot := filepath.Clean(filepath.FromSlash(rootPath))
 
 	rootNode := make(treeNode)
 
 	for _, file := range files {
-		normFile := filepath.ToSlash(file)
-		if !strings.HasPrefix(normFile, cleanRoot) {
+		relPath, err := filepath.Rel(cleanRoot, filepath.Clean(filepath.FromSlash(file)))
+		if err != nil || relPath == "." || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
 			continue
 		}
-
-		relPath := normFile
-		if len(normFile) > prefixLen {
-			relPath = normFile[prefixLen:]
-		}
-
+		relPath = filepath.ToSlash(relPath)
 		parts := strings.Split(relPath, "/")
 		curr := rootNode
 		for _, part := range parts {

@@ -1,9 +1,8 @@
 package scanner
 
 import (
-	"bufio"
-	"bytes"
-	"io"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,119 +19,112 @@ type Scanner struct {
 
 func NewScanner() *Scanner {
 	dirMap := make(map[string]struct{}, len(config.ExcludedDirs))
-	for _, d := range config.ExcludedDirs {
-		dirMap[strings.ToLower(filepath.ToSlash(d))] = struct{}{}
+	for _, dir := range config.ExcludedDirs {
+		dirMap[strings.ToLower(filepath.ToSlash(dir))] = struct{}{}
 	}
 
 	fileMap := make(map[string]struct{}, len(config.ExcludedFiles))
-	for _, f := range config.ExcludedFiles {
-		fileMap[strings.ToLower(f)] = struct{}{}
+	for _, file := range config.ExcludedFiles {
+		fileMap[strings.ToLower(file)] = struct{}{}
 	}
 
-	binMap := make(map[string]struct{}, len(config.BinaryExtensions))
-	for _, b := range config.BinaryExtensions {
-		binMap[strings.ToLower(b)] = struct{}{}
+	binaryMap := make(map[string]struct{}, len(config.BinaryExtensions))
+	for _, extension := range config.BinaryExtensions {
+		binaryMap[strings.ToLower(extension)] = struct{}{}
 	}
 
 	return &Scanner{
 		excludedDirs:  dirMap,
 		excludedFiles: fileMap,
-		binaryExts:    binMap,
+		binaryExts:    binaryMap,
 	}
 }
 
-// IsBinary returns true if the extension belongs to binary/media/asset files
-func (s *Scanner) IsBinary(ext string) bool {
-	cleanExt := strings.ToLower(strings.TrimPrefix(ext, "."))
-	_, exists := s.binaryExts[cleanExt]
+// IsBinary reports whether an extension belongs to a known binary, media, or
+// generated asset format.
+func (s *Scanner) IsBinary(extension string) bool {
+	cleanExtension := strings.ToLower(strings.TrimPrefix(extension, "."))
+	_, exists := s.binaryExts[cleanExtension]
 	return exists
 }
 
-// loadGitignoreRules parses .gitignore rules from project root directory
-func (s *Scanner) loadGitignoreRules(rootPath string) map[string]struct{} {
-	gitMap := make(map[string]struct{})
-	gitignorePath := filepath.Join(rootPath, ".gitignore")
-	f, err := os.Open(gitignorePath)
-	if err != nil {
-		return gitMap
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		clean := strings.TrimPrefix(line, "/")
-		clean = strings.TrimSuffix(clean, "/")
-		cleanLower := strings.ToLower(filepath.ToSlash(clean))
-		if cleanLower != "" {
-			gitMap[cleanLower] = struct{}{}
-		}
-	}
-	return gitMap
+// ScanProjectFiles recursively discovers non-excluded project files.
+func (s *Scanner) ScanProjectFiles(rootPath string) ([]string, error) {
+	return s.ScanProjectFilesContext(context.Background(), rootPath)
 }
 
-// ScanProjectFiles recursively finds all non-excluded files under rootPath
-func (s *Scanner) ScanProjectFiles(rootPath string) ([]string, error) {
-	cleanRoot := filepath.Clean(rootPath)
+// ScanProjectFilesContext is the cancellable form used by interactive scans.
+// It evaluates root and nested .gitignore files in their directory scope and
+// never follows symbolic links or Windows junction-like reparse entries.
+func (s *Scanner) ScanProjectFilesContext(ctx context.Context, rootPath string) ([]string, error) {
+	cleanRoot, err := filepath.Abs(filepath.Clean(rootPath))
+	if err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(cleanRoot)
 	if err != nil || !info.IsDir() {
 		return nil, os.ErrNotExist
 	}
 
-	gitRules := s.loadGitignoreRules(cleanRoot)
-	var files []string
+	rootIgnore := loadIgnoreLayer(nil, cleanRoot, cleanRoot)
+	ignoreByDir := map[string]*ignoreLayer{cleanRoot: rootIgnore}
+	files := make([]string, 0, 256)
 
-	err = filepath.WalkDir(cleanRoot, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil // Skip unreadable entries
+	err = filepath.WalkDir(cleanRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-
-		relPath, _ := filepath.Rel(cleanRoot, path)
-		relSlash := strings.ToLower(filepath.ToSlash(relPath))
-		nameLower := strings.ToLower(d.Name())
-
-		if d.IsDir() {
-			if path != cleanRoot {
-				// Check exact directory name (e.g. node_modules, target, .next, venv)
-				if _, excluded := s.excludedDirs[nameLower]; excluded {
-					return filepath.SkipDir
-				}
-				// Check relative subpath (e.g. storage/framework, android/build)
-				if _, excluded := s.excludedDirs[relSlash]; excluded {
-					return filepath.SkipDir
-				}
-				// Check .gitignore directory rule
-				if _, excluded := gitRules[nameLower]; excluded {
-					return filepath.SkipDir
-				}
-				if _, excluded := gitRules[relSlash]; excluded {
-					return filepath.SkipDir
-				}
+		if walkErr != nil {
+			if path == cleanRoot {
+				return walkErr
+			}
+			if entry != nil && entry.IsDir() {
+				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		// Check file exclusions
+		if path == cleanRoot {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		relPath, err := filepath.Rel(cleanRoot, path)
+		if err != nil || relPath == "." || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+			return nil
+		}
+		relSlash := filepath.ToSlash(relPath)
+		relLower := strings.ToLower(relSlash)
+		nameLower := strings.ToLower(entry.Name())
+		parentIgnore := ignoreByDir[filepath.Dir(path)]
+
+		if entry.IsDir() {
+			if s.isExcludedDirectory(nameLower, relLower) || parentIgnore.ignored(relSlash, true) {
+				return filepath.SkipDir
+			}
+			ignoreByDir[path] = loadIgnoreLayer(parentIgnore, cleanRoot, path)
+			return nil
+		}
+
 		if _, excluded := s.excludedFiles[nameLower]; excluded {
 			return nil
 		}
-		if _, excluded := gitRules[nameLower]; excluded {
-			return nil
-		}
-		if _, excluded := gitRules[relSlash]; excluded {
+		if parentIgnore.ignored(relSlash, false) {
 			return nil
 		}
 
-		// Normalize to forward slashes for cross-platform consistency
-		normalizedPath := filepath.ToSlash(path)
-		files = append(files, normalizedPath)
+		files = append(files, filepath.ToSlash(path))
 		return nil
 	})
-
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		return nil, err
 	}
 
@@ -140,44 +132,10 @@ func (s *Scanner) ScanProjectFiles(rootPath string) ([]string, error) {
 	return files, nil
 }
 
-// CountProjectLinesFast counts lines across files using fast chunked I/O
-func (s *Scanner) CountProjectLinesFast(files []string, maxFileSize int64) int64 {
-	var totalLines int64
-
-	buf := make([]byte, 65536) // 64KB chunk buffer
-
-	for _, file := range files {
-		ext := filepath.Ext(file)
-		if s.IsBinary(ext) {
-			continue
-		}
-
-		info, err := os.Stat(file)
-		if err != nil || info.Size() == 0 || (maxFileSize > 0 && info.Size() > maxFileSize) {
-			continue
-		}
-
-		f, err := os.Open(file)
-		if err != nil {
-			continue
-		}
-
-		var fileLines int64
-		for {
-			n, err := f.Read(buf)
-			if n > 0 {
-				fileLines += int64(bytes.Count(buf[:n], []byte("\n")))
-			}
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				break
-			}
-		}
-		f.Close()
-		totalLines += fileLines + 1 // Add +1 for last line without newline
+func (s *Scanner) isExcludedDirectory(nameLower, relLower string) bool {
+	if _, excluded := s.excludedDirs[nameLower]; excluded {
+		return true
 	}
-
-	return totalLines
+	_, excluded := s.excludedDirs[relLower]
+	return excluded
 }

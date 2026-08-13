@@ -1,6 +1,8 @@
 package scanner
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +42,90 @@ func TestScanner_ScanProjectFiles(t *testing.T) {
 		if strings.Contains(f, "node_modules") || strings.Contains(f, ".git") || strings.Contains(f, ".env") || strings.Contains(f, ".next") || strings.Contains(f, "target") {
 			t.Errorf("found excluded file/dir in results: %s", f)
 		}
+	}
+}
+
+func TestScanner_GitignoreWildcardsNegationAndNestedRules(t *testing.T) {
+	tempDir := t.TempDir()
+	mustMkdirAll(t, filepath.Join(tempDir, "artifacts"))
+	mustMkdirAll(t, filepath.Join(tempDir, "src", "generated"))
+
+	mustWriteFile(t, filepath.Join(tempDir, ".gitignore"), "*.log\nartifacts/*\n!artifacts/\n!artifacts/keep.txt\nsrc/generated/**\n")
+	mustWriteFile(t, filepath.Join(tempDir, "src", ".gitignore"), "!keep.log\n")
+	mustWriteFile(t, filepath.Join(tempDir, "root.log"), "ignored")
+	mustWriteFile(t, filepath.Join(tempDir, "artifacts", "drop.txt"), "ignored")
+	mustWriteFile(t, filepath.Join(tempDir, "artifacts", "keep.txt"), "included")
+	mustWriteFile(t, filepath.Join(tempDir, "src", "drop.log"), "ignored")
+	mustWriteFile(t, filepath.Join(tempDir, "src", "keep.log"), "included")
+	mustWriteFile(t, filepath.Join(tempDir, "src", "generated", "code.go"), "ignored")
+	mustWriteFile(t, filepath.Join(tempDir, "src", "main.go"), "package main")
+
+	files, err := NewScanner().ScanProjectFiles(tempDir)
+	if err != nil {
+		t.Fatalf("ScanProjectFiles failed: %v", err)
+	}
+
+	paths := make(map[string]bool, len(files))
+	for _, file := range files {
+		rel, relErr := filepath.Rel(tempDir, filepath.FromSlash(file))
+		if relErr != nil {
+			t.Fatal(relErr)
+		}
+		paths[filepath.ToSlash(rel)] = true
+	}
+	for _, included := range []string{".gitignore", "artifacts/keep.txt", "src/.gitignore", "src/keep.log", "src/main.go"} {
+		if !paths[included] {
+			t.Errorf("expected %q to be included; files=%v", included, files)
+		}
+	}
+	for _, excluded := range []string{"root.log", "artifacts/drop.txt", "src/drop.log", "src/generated/code.go"} {
+		if paths[excluded] {
+			t.Errorf("expected %q to be ignored; files=%v", excluded, files)
+		}
+	}
+}
+
+func TestScanner_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := NewScanner().ScanProjectFilesContext(ctx, t.TempDir())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestScanner_CountProjectStats(t *testing.T) {
+	tempDir := t.TempDir()
+	textA := filepath.Join(tempDir, "a.txt")
+	textB := filepath.Join(tempDir, "b.go")
+	binary := filepath.Join(tempDir, "logo.png")
+	large := filepath.Join(tempDir, "large.txt")
+	mustWriteFile(t, textA, "one\ntwo")
+	mustWriteFile(t, textB, "package main\n")
+	mustWriteFile(t, binary, "binary")
+	mustWriteFile(t, large, strings.Repeat("x", 128))
+
+	stats := NewScanner().CountProjectStats(context.Background(), []string{textA, textB, binary, large}, 64, 4)
+	if stats.Lines != 4 {
+		t.Errorf("expected 4 lines, got %d", stats.Lines)
+	}
+	if stats.TextFiles != 2 || stats.BinaryFiles != 1 || stats.SkippedFiles != 1 || stats.Unreadable != 0 {
+		t.Errorf("unexpected stats: %+v", stats)
+	}
+}
+
+func mustMkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
