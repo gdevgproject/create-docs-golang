@@ -1,6 +1,7 @@
 package bookmarks
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,6 +44,81 @@ func TestBookmarks_SaveGetDelete(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Errorf("expected 0 bookmarks after delete, got %d", len(items))
+	}
+}
+
+func TestBookmarks_SaveSamePathUpdatesExisting(t *testing.T) {
+	tempFile := filepath.Join(t.TempDir(), "saved_paths.json")
+	manager := NewManager(tempFile)
+
+	first, err := manager.SaveBookmark("D:/Projects/MyApp", "First name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.SaveBookmark("D:/Projects/MyApp", "Updated name")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("saving the same path created a duplicate: first=%d second=%d", len(first), len(second))
+	}
+	for id, bookmark := range second {
+		if bookmark.Note != "Updated name" {
+			t.Fatalf("bookmark note = %q, want Updated name", bookmark.Note)
+		}
+		if _, existed := first[id]; !existed {
+			t.Fatal("updating a path must preserve the bookmark ID")
+		}
+	}
+}
+
+func TestBookmarks_RecoversValidBackup(t *testing.T) {
+	tempFile := filepath.Join(t.TempDir(), "saved_paths.json")
+	manager := NewManager(tempFile)
+	if _, err := manager.SaveBookmark("D:/Projects/One", "One"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.SaveBookmark("D:/Projects/Two", "Two"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(tempFile + ".bak"); err != nil {
+		t.Fatalf("expected a backup generation: %v", err)
+	}
+	if err := os.WriteFile(tempFile, []byte("{corrupt"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	recovered, err := manager.GetBookmarks()
+	if err != nil {
+		t.Fatalf("valid backup was not recovered: %v", err)
+	}
+	if len(recovered) != 1 {
+		t.Fatalf("recovered generation contains %d bookmarks, want 1", len(recovered))
+	}
+	data, err := os.ReadFile(tempFile)
+	if err != nil || !json.Valid(data) {
+		t.Fatalf("primary file was not repaired: err=%v data=%q", err, data)
+	}
+}
+
+func TestBookmarks_CorruptionIsReportedWithoutDataReset(t *testing.T) {
+	tempFile := filepath.Join(t.TempDir(), "saved_paths.json")
+	if err := os.WriteFile(tempFile, []byte("{} trailing"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(tempFile)
+	if _, err := manager.GetBookmarks(); err == nil {
+		t.Fatal("expected corrupt bookmark data to be reported")
+	}
+	if _, err := manager.SaveBookmark("D:/Projects/New", "New"); err == nil {
+		t.Fatal("mutation must not overwrite corrupt bookmark data")
+	}
+	data, err := os.ReadFile(tempFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "{} trailing" {
+		t.Fatalf("corrupt source was unexpectedly replaced: %q", data)
 	}
 }
 
