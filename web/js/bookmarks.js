@@ -182,7 +182,7 @@ function renderHistory(bookmark) {
     metrics.append(
       metric(formatNumber(result.total) + ' files'),
       metric(formatNumber(result.lines) + ' lines'),
-      metric((result.token_mode === 'exact' ? '' : '~') + formatNumber(result.tokens) + ' tok'),
+      metric((result.token_mode === 'exact' ? '' : '~') + formatNumber(result.tokens) + ' tok', 'token'),
       metric(formatBytes(result.size)),
       metric(Number(result.elapsed || 0).toFixed(2).replace(/\.?0+$/, '') + 's')
     );
@@ -435,9 +435,9 @@ function historyButton(action, label) {
   return button;
 }
 
-function metric(text) {
+function metric(text, variant = '') {
   const element = document.createElement('span');
-  element.className = 'history-metric';
+  element.className = 'history-metric' + (variant ? ` ${variant}` : '');
   element.textContent = text;
   return element;
 }

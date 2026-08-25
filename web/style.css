@@ -1071,8 +1071,22 @@ kbd {
   padding: 2px 5px;
   color: var(--muted);
   background: var(--canvas);
+  border: 1px solid transparent;
   border-radius: 4px;
   font: 10px var(--mono);
+}
+
+.history-metric.token {
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-color: rgba(80, 199, 245, 0.35);
+  font-weight: 650;
+}
+
+.history-card:hover .history-metric.token {
+  border-color: rgba(80, 199, 245, 0.6);
+  background: rgba(80, 199, 245, 0.18);
+  color: #fff;
 }
 
 .panel-backdrop {

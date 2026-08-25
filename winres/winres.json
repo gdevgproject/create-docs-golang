@@ -9,7 +9,7 @@
       "0409": {
         "identity": {
           "name": "gdevgproject.CodeDocs",
-          "version": "1.8.1.0"
+          "version": "1.8.2.0"
         },
         "description": "CodeDocs desktop application",
         "minimum-os": "win7",
@@ -33,20 +33,20 @@
     "#1": {
       "0409": {
         "fixed": {
-          "file_version": "1.8.1.0",
-          "product_version": "1.8.1.0"
+          "file_version": "1.8.2.0",
+          "product_version": "1.8.2.0"
         },
         "info": {
           "0409": {
             "Comments": "Local-first source code documentation generator",
             "CompanyName": "gdevgproject",
             "FileDescription": "CodeDocs",
-            "FileVersion": "1.8.1.0",
+            "FileVersion": "1.8.2.0",
             "InternalName": "codedocs",
             "LegalCopyright": "Copyright (c) gdevgproject",
             "OriginalFilename": "codedocs.exe",
             "ProductName": "CodeDocs",
-            "ProductVersion": "1.8.1.0"
+            "ProductVersion": "1.8.2.0"
           }
         }
       }
