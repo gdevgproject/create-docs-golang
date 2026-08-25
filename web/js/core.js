@@ -5,8 +5,8 @@ const requiredIDs = [
   'stat-lines', 'stat-tokens', 'card-tokens', 'stat-size', 'stat-time',
   'stat-date', 'btn-load', 'btn-copy', 'btn-download', 'status-panel',
   'progress-fill', 'percent-text', 'speed-text', 'log-text', 'toast',
-  'modal-dialog', 'modal-title', 'modal-content', 'btn-copy-modal',
-  'btn-modal-primary', 'btn-close-modal', 'virtual-banner', 'v-banner-text',
+  'modal-dialog', 'modal-box', 'modal-title', 'modal-content', 'btn-copy-modal',
+  'btn-modal-primary', 'btn-modal-cancel', 'btn-close-modal', 'modal-foot', 'virtual-banner', 'v-banner-text',
   'btn-render-all', 'btn-stop-render', 'app-version', 'ver-info',
   'btn-manual-check', 'btn-check-update', 'update-card', 'update-card-title',
   'update-card-pct', 'update-progress-fill', 'update-card-sub',
@@ -258,7 +258,7 @@ export async function copyToClipboard(text) {
 }
 
 export function openInfoModal(title, content, options = {}) {
-  prepareModal(title);
+  prepareModal(title, 'large');
   if (content instanceof Node) dom.modalContent.appendChild(content);
   else dom.modalContent.textContent = String(content || '');
   if (options.preformatted) {
@@ -276,7 +276,7 @@ export function openInfoModal(title, content, options = {}) {
 
 export function promptDialog(title, value = '', message = '') {
   return new Promise((resolve) => {
-    prepareModal(title);
+    prepareModal(title, 'compact');
     if (message) {
       const copy = document.createElement('p');
       copy.className = 'dialog-copy';
@@ -289,16 +289,26 @@ export function promptDialog(title, value = '', message = '') {
     input.maxLength = 120;
     input.value = value;
     dom.modalContent.appendChild(input);
+
+    dom.modalFoot.hidden = false;
+    dom.btnModalCancel.hidden = false;
+    dom.btnModalCancel.textContent = 'Cancel';
     dom.btnModalPrimary.hidden = false;
     dom.btnModalPrimary.textContent = 'Save';
+    dom.btnModalPrimary.className = 'button primary compact';
+
     const finish = (result) => {
-		state.modalCleanup = null;
-		dom.btnModalPrimary.removeEventListener('click', submit);
-		dom.modalDialog.hidden = true;
-		resolve(result);
+      state.modalCleanup = null;
+      dom.btnModalPrimary.removeEventListener('click', submit);
+      dom.btnModalCancel.removeEventListener('click', cancel);
+      dom.modalDialog.hidden = true;
+      resolve(result);
     };
     const submit = () => finish(input.value.trim());
+    const cancel = () => finish(null);
+
     dom.btnModalPrimary.addEventListener('click', submit);
+    dom.btnModalCancel.addEventListener('click', cancel);
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -307,6 +317,7 @@ export function promptDialog(title, value = '', message = '') {
     });
     state.modalCleanup = () => {
       dom.btnModalPrimary.removeEventListener('click', submit);
+      dom.btnModalCancel.removeEventListener('click', cancel);
       resolve(null);
     };
     dom.modalDialog.hidden = false;
@@ -319,23 +330,34 @@ export function promptDialog(title, value = '', message = '') {
 
 export function confirmDialog(title, message, confirmLabel = 'Delete') {
   return new Promise((resolve) => {
-    prepareModal(title);
+    prepareModal(title, 'compact');
     const copy = document.createElement('p');
     copy.className = 'dialog-copy';
     copy.textContent = message;
     dom.modalContent.appendChild(copy);
+
+    dom.modalFoot.hidden = false;
+    dom.btnModalCancel.hidden = false;
+    dom.btnModalCancel.textContent = 'Cancel';
     dom.btnModalPrimary.hidden = false;
     dom.btnModalPrimary.textContent = confirmLabel;
     dom.btnModalPrimary.className = 'button danger compact';
-    const confirm = () => {
+
+    const finish = (result) => {
       state.modalCleanup = null;
       dom.btnModalPrimary.removeEventListener('click', confirm);
+      dom.btnModalCancel.removeEventListener('click', cancel);
       dom.modalDialog.hidden = true;
-      resolve(true);
+      resolve(result);
     };
+    const confirm = () => finish(true);
+    const cancel = () => finish(false);
+
     dom.btnModalPrimary.addEventListener('click', confirm);
+    dom.btnModalCancel.addEventListener('click', cancel);
     state.modalCleanup = () => {
       dom.btnModalPrimary.removeEventListener('click', confirm);
+      dom.btnModalCancel.removeEventListener('click', cancel);
       resolve(false);
     };
     dom.modalDialog.hidden = false;
@@ -373,18 +395,26 @@ export function getPreferences() {
   return { ...preferences };
 }
 
-function prepareModal(title) {
+function prepareModal(title, size = 'compact') {
   if (state.modalCleanup) {
     const cleanup = state.modalCleanup;
     state.modalCleanup = null;
     cleanup();
   }
+  const box = dom.modalBox || dom.modalDialog.querySelector('.modal-box');
+  if (box) {
+    box.classList.toggle('modal-large', size === 'large');
+  }
   dom.modalTitle.textContent = title;
   dom.modalContent.replaceChildren();
   dom.btnCopyModal.hidden = true;
   dom.btnCopyModal.dataset.copyText = '';
-  dom.btnModalPrimary.hidden = true;
-  dom.btnModalPrimary.className = 'button primary compact';
+  if (dom.modalFoot) dom.modalFoot.hidden = true;
+  if (dom.btnModalCancel) dom.btnModalCancel.hidden = true;
+  if (dom.btnModalPrimary) {
+    dom.btnModalPrimary.hidden = true;
+    dom.btnModalPrimary.className = 'button primary compact';
+  }
 }
 
 function toggleProjects() {

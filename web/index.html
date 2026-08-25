@@ -19,7 +19,7 @@
         <img class="brand-icon" src="favicon.ico" alt="">
         <div class="brand-copy">
           <strong>CodeDocs</strong>
-          <span id="app-version">v1.8.2</span>
+          <span id="app-version">v1.8.3</span>
         </div>
       </div>
 
@@ -197,16 +197,19 @@
   </div>
 
   <div class="modal-overlay" id="modal-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal-box">
+    <div class="modal-box" id="modal-box">
       <header class="modal-head">
         <h2 id="modal-title">Details</h2>
         <div class="modal-actions">
           <button type="button" class="button subtle compact" id="btn-copy-modal" hidden>Copy</button>
-          <button type="button" class="button primary compact" id="btn-modal-primary" hidden>Save</button>
           <button type="button" class="icon-button" id="btn-close-modal" aria-label="Close dialog">×</button>
         </div>
       </header>
       <div class="modal-body" id="modal-content"></div>
+      <footer class="modal-foot" id="modal-foot" hidden>
+        <button type="button" class="button subtle compact" id="btn-modal-cancel">Cancel</button>
+        <button type="button" class="button primary compact" id="btn-modal-primary" hidden>Save</button>
+      </footer>
     </div>
   </div>
 

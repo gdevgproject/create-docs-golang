@@ -1110,15 +1110,19 @@ kbd {
 
 .modal-box {
   display: flex;
-  width: min(760px, 94vw);
+  width: min(440px, 94vw);
   max-height: min(780px, 88vh);
   flex-direction: column;
   overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--border-strong);
-  border-radius: 13px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
   animation: modal-in 130ms ease-out;
+}
+
+.modal-box.modal-large {
+  width: min(740px, 94vw);
 }
 
 @keyframes modal-in {
@@ -1132,22 +1136,40 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 54px;
-  padding: 0 12px 0 18px;
+  min-height: 48px;
+  padding: 0 14px 0 18px;
   border-bottom: 1px solid var(--border);
+  gap: 12px;
 }
 
 .modal-head h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .modal-body {
-  min-height: 120px;
-  padding: 18px;
+  padding: 16px 18px;
   overflow: auto;
   color: var(--muted);
   line-height: 1.55;
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.14);
 }
 
 .modal-body pre {
@@ -1160,20 +1182,23 @@ kbd {
 }
 
 .dialog-copy {
-  margin: 0 0 13px;
-  color: var(--muted);
-  font-size: 13px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 
 .dialog-input {
   width: 100%;
-  height: 40px;
+  height: 38px;
+  margin-top: 10px;
   padding: 0 11px;
   color: var(--text);
   background: var(--editor);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   outline: 0;
+  font-size: 13.5px;
 }
 
 .dialog-input:focus {
